@@ -32,7 +32,7 @@ class UiFlowTest {
     }
 
     @Test fun emptyOrdersAndPositionsStatesShow() {
-        rule.onNodeWithTag("tab_Positions").performClick(); rule.onNodeWithText("No positions").assertExists()
+        rule.onNodeWithTag("tab_Positions").performClick(); rule.onNodeWithText("No open positions").assertExists()
         rule.onNodeWithTag("tab_Orders").performClick()
     }
 }

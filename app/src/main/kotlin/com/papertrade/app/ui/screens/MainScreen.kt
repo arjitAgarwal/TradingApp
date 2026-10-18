@@ -1,16 +1,27 @@
 package com.papertrade.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.CandlestickChart
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,24 +34,50 @@ import com.papertrade.app.data.repo.FyersAuthState
 import com.papertrade.app.ui.*
 import com.papertrade.app.ui.components.*
 
-/** NIFTY 50 / SENSEX ticker pinned at the top. Tap to open the index. */
+/** One thin, sideways-scrolling line: "NIFTY 50  24,913.50 [+148.80]   SENSEX …". Tap an index to open it. */
 @Composable
 fun MarketTicker(vm: AppVM, onIndex: (Underlying) -> Unit) {
     val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
         Underlying.values().forEach { u ->
             val q = quotes[u.indexSymbol]
-            Column(Modifier.weight(1f).clickable { onIndex(u) }.testTag("ticker_${u.name}")) {
-                Text(u.displayName, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(Fmt.inr(q?.ltp), fontWeight = FontWeight.Bold)
-                Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", fontSize = 12.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface))
-                FreshnessChip(freshnessOf(q, now, vm.maxAgeSec()), q?.let { Fmt.time(it.timestamp).substringAfter(", ") })
+            // Stale/cached/missing prices are greyed so an old number never passes for a live one.
+            val fresh = freshnessOf(q, now, vm.maxAgeSec()).let { it == Freshness.LIVE || it == Freshness.DEMO }
+            Row(Modifier.clickable { onIndex(u) }.testTag("ticker_${u.name}"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(u.displayName, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(Fmt.inr(q?.ltp), fontSize = 13.sp, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                ChangeBadge(q?.change)
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Green/red pill with the signed change, like "+148.80". */
+@Composable
+fun ChangeBadge(change: java.math.BigDecimal?) {
+    val c = Fmt.color(change, MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(Fmt.signed(change), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = c,
+        modifier = Modifier.background(c.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+}
+
+/** Compact one-row header. Logo and title are placeholders until the header design is decided. */
+@Composable
+fun AppHeader(onSearch: () -> Unit, onProfile: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+            Icon(Icons.AutoMirrored.Filled.ShowChart, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
+        }
+        Text("Paper Trade", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 12.dp).weight(1f))
+        IconButton(onSearch, Modifier.testTag("header_search")) { Icon(Icons.Default.Search, "Search") }
+        IconButton(onProfile, Modifier.testTag("open_account")) {
+            Box(Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Person, "Account", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
 @Composable
 fun MainScreen(vm: AppVM, nav: Nav) {
     val tabs = listOf("Explore", "Holdings", "Positions", "Orders")
@@ -50,21 +87,41 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
-        Column {
+        Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
-            TopAppBar(title = { Text("Paper Trade") }, actions = { IconButton(onClick = nav.account, modifier = Modifier.testTag("open_account")) { Icon(Icons.Default.AccountBalanceWallet, "Account") } })
+            AppHeader(onSearch = { tab = 0 }, onProfile = nav.account)
             MarketTicker(vm, nav.index)
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != FyersAuthState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth == FyersAuthState.NEEDS_LOGIN) nav.fyersLogin() else nav.account() }.testTag("fyers_login_banner")) {
                 Text(if (auth == FyersAuthState.NEEDS_LOGIN) "FYERS login needed for live prices. Tap here to log in." else "FYERS is not set up yet. Tap to open settings.",
                     color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
             }
-            if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp))
-            TabRow(selectedTabIndex = tab) { tabs.forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }, modifier = Modifier.testTag("tab_$t")) } }
+            if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
+            // Plain text tabs, underline on the selected one; scrolls instead of wrapping "Positions" onto two lines.
+            ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp, containerColor = MaterialTheme.colorScheme.surface, divider = { HorizontalDivider() },
+                indicator = { pos -> TabRowDefaults.SecondaryIndicator(with(TabRowDefaults) { Modifier.tabIndicatorOffset(pos[tab]) }, height = 3.dp, color = MaterialTheme.colorScheme.onSurface) }) {
+                tabs.forEachIndexed { i, t ->
+                    Tab(tab == i, { tab = i }, selectedContentColor = MaterialTheme.colorScheme.onSurface, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = { Text(t, fontSize = 16.sp, fontWeight = if (tab == i) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, softWrap = false) }, modifier = Modifier.testTag("tab_$t"))
+                }
+            }
         }
-    }) { pad ->
+    }, bottomBar = { BottomBar(onFno = { nav.chain(Underlying.NIFTY) }, onUnavailable = { vm.messages.tryEmit("$it isn't part of this paper-trading app") }) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (tab) { 0 -> ExploreScreen(vm, nav); 1 -> HoldingsScreen(vm, nav); 2 -> PositionsScreen(vm); else -> OrdersScreen(vm) }
         }
+    }
+}
+
+/** Stocks is this screen; F&O opens the NIFTY option chain; Mutual Funds and Loans don't exist here, so they only explain that. */
+@Composable
+private fun BottomBar(onFno: () -> Unit, onUnavailable: (String) -> Unit) {
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+        listOf(Triple("Stocks", Icons.AutoMirrored.Filled.ShowChart, {}), Triple("F&O", Icons.Default.CandlestickChart, onFno),
+            Triple("Mutual Funds", Icons.Default.PieChart, { onUnavailable("Mutual Funds") }), Triple("Loans", Icons.Default.Payments, { onUnavailable("Loans") }))
+            .forEachIndexed { i, (label, icon, onClick) ->
+                NavigationBarItem(selected = i == 0, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label, fontSize = 11.sp, maxLines = 1) },
+                    modifier = Modifier.testTag("bottom_$label"))
+            }
     }
 }
 

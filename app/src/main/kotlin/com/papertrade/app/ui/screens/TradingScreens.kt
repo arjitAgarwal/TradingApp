@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,13 +64,13 @@ fun OrdersScreen(vm: AppVM) {
 @Composable
 fun PositionsScreen(vm: AppVM) {
     val acc by vm.account.collectAsState(); val val_ by vm.valuation.collectAsState()
-    val rows = val_?.positions?.filter { r -> acc?.positions?.get(r.instrumentId)?.let { p -> vm.info(p.instrumentId)?.segment != Segment.EQUITY && (p.isOpen || r.realizedGross.signum() != 0) } == true } ?: emptyList()
+    val rows = val_?.positions?.filter { r -> acc?.positions?.get(r.instrumentId)?.let { p -> vm.info(p.instrumentId)?.segment != Segment.EQUITY && p.isOpen } == true } ?: emptyList()
+    if (rows.isEmpty()) { EmptyState(Icons.Outlined.Insights, "No open positions", "Futures and options you buy show up here."); return }
     Column(Modifier.fillMaxSize()) {
         Card(Modifier.fillMaxWidth().padding(12.dp)) { Column(Modifier.padding(12.dp)) {
             Text("Total P&L (positions)"); val total = rows.fold(BigDecimal.ZERO) { a, r -> a + r.netPnl }
             Text(Fmt.rupee(total), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.testTag("positions_total")) } }
-        if (rows.isEmpty()) CenterMessage("No positions", "Futures and options positions appear here after a simulated fill.")
-        else LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(rows, key = { it.instrumentId }) { r -> val p = acc!!.positions.getValue(r.instrumentId); val q = vm.quotes.collectAsState().value[p.instrumentId]
                 Card(Modifier.fillMaxWidth().testTag("pos_${p.instrumentId}")) { Column(Modifier.padding(12.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(name(vm, p.instrumentId), fontWeight = FontWeight.SemiBold); Text(if (p.isOpen) (if (p.quantity > 0) "LONG" else "SHORT") else "CLOSED") }
