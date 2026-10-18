@@ -1,0 +1,243 @@
+=====================================================================
+  FRIEND'S NOTES: PAGES 3 TO 10
+  Planned changes and questions to answer
+=====================================================================
+
+Pages 1 and 2 are already done and pushed to the version1 branch.
+This file covers the remaining pages (3 to 10).
+
+How to use this file:
+  - Read PART 1 to understand what your friend wants.
+  - Read PART 2 for the list of changes.
+  - Answer the questions in PART 3: write your answer after "ANSWER:".
+  - Then tell me "answers are in the file" and I will read it.
+
+
+---------------------------------------------------------------------
+PART 1: WHAT YOUR FRIEND WANTS (pages 9 and 10)
+---------------------------------------------------------------------
+
+He will have 3 screens open "live":
+   1) Positions
+   2) Orders
+   3) A watchlist (any name he likes)
+
+His flow:
+   Step 1. Before going live, he adds 5 to 8 NIFTY options from the
+           option chain into his watchlist.
+   Step 2. Live, he taps one option in the watchlist.
+           A Buy / Sell panel slides up from the bottom.
+   Step 3. He taps Buy. The order page opens.
+   Step 4. After buying, the trade shows live in the Positions tab.
+
+Everything in PART 2 supports this flow.
+
+
+---------------------------------------------------------------------
+PART 2: ALL THE CHANGES
+---------------------------------------------------------------------
+
+GROUP A: LOOK AND FEEL  (pages 4 and 6)
+
+  A1. Page colours like Groww: white background, Groww-style green
+      and red, flat rows with thin lines between them (no cards).
+
+  A2. Font like Groww. Groww's exact font is not public, so we use
+      "Inter", the closest free font.
+
+  A3. Remove from the home screen: the wallet icon, and the small
+      DEMO / time tags under the prices.
+      (See the NOTE at the end about the DEMO banner and the
+      "Paper Trade" title.)
+
+
+GROUP B: HEADER AND INDEX STRIP  (pages 4 and 5)
+
+  B1. Header: logo + title on the left; search, an icon and a
+      PROFILE PHOTO on the right.
+      Logo and title are still undecided (your choice, later).
+
+  B2. NIFTY / SENSEX strip with a red box when down and a green box
+      when up.   --> ALREADY DONE on page 1.
+
+  B3. "Explore" tab: he does not need it live. Plan: the app opens
+      on the Positions tab. Explore stays as a tab but isn't the
+      first screen.
+
+
+GROUP C: WATCHLIST TAB  (page 7)
+
+  C1. Header row, same as Groww:
+        "12 stocks"                       [+]  [pencil]
+        Sort                       Mkt price / 1D
+
+  C2. You can add options FROM THE NIFTY OPTION CHAIN (a star on each
+      row). They are saved with their expiry date and named like:
+        NIFTY 19 Oct 23300 Call
+
+  C3. Each row shows: name, a small 1-day price line chart, the
+      current price, and the change with %.
+
+  C4. Tapping a row opens a panel from the bottom with:
+        - the option name, price and change
+        - "Set alert"
+        - a red SELL button and a green BUY button
+
+
+GROUP D: ORDER PAGE  (page 8, opens after tapping BUY)
+
+  D1. Top: option name, price and % change. "Depth" link is shown
+      but does nothing ("koi kaam nhi, bas aise rahe").
+
+  D2. "Delivery" / "Intraday" buttons and a settings icon: shown
+      but do nothing.
+
+  D3. Quantity shown as "1 lot x 65" with - and + buttons
+      (each tap = one lot).
+
+  D4. Price type is MARKET by default (not Limit).
+
+  D5. "Add stoploss/target" link is kept.  (see Question 2)
+
+  D6. Remove the yellow "Available balance is not enough" warning.
+
+  D7. "Balance:" shows the virtual account balance.
+
+  D8. No big number keypad on the page (he crossed it out). The
+      normal phone keyboard is used.
+
+
+GROUP E: POSITIONS TAB  (pages 3, 5, 6, 10)  -- MOST IMPORTANT
+
+  E1. A "Total Returns" box at the top (example: +Rs 20,287.50),
+      with "Set Safe Exit" on its right.   (see Question 1)
+
+  E2. A row under it with: "Filters", a chart icon, and "Exit".
+      (see Question 1)
+
+  E3. Each position as one flat row, like Groww:
+
+        NIFTY 13-Oct-26 22350 CE                     +Rs 41,600.00
+        16 Lots                          LTP Rs 225.25 (242.33%)
+        Buy Rs 140.00                               Sell Rs 180.00
+
+      Profit in green, loss in red. "Sell" price appears once the
+      position is booked (closed).
+
+  E4. The big detailed card (Quantity, Avg entry, Current, Realized,
+      Unrealized, Charges, Net P&L, Close button) is REMOVED.
+
+  E5. BOOKED (closed) positions STAY in the list, shown in grey.
+      (Page 1 hid closed positions; this brings them back.)
+
+  E6. 1 NIFTY lot = 65.
+        - FYERS (real) mode: already correct.
+        - Demo mode: wrongly uses 75. Will change to 65.
+
+  E7. New trades appear live in Positions after buying.
+      --> ALREADY WORKS.
+
+
+---------------------------------------------------------------------
+ORDER I PLAN TO BUILD IN
+---------------------------------------------------------------------
+
+  1. A  (colours, font)  - everything else gets restyled anyway
+  2. E  (Positions)      - the most important screen
+  3. C  (Watchlist)      - C2 must come before C3 and C4
+  4. D  (Order page)     - opened by Buy in C4
+  5. B3 (open on Positions)
+
+  Each group: I build it, show you screenshots, you check it,
+  then I commit and push.
+
+
+---------------------------------------------------------------------
+PART 3: QUESTIONS YOU NEED TO ANSWER
+---------------------------------------------------------------------
+
+Q1. Positions tab: "Set Safe Exit", "Filters", the chart icon, and
+    "Exit" (items E1, E2).
+    Should they WORK, or just be SHOWN (look only, like "Depth")?
+      If they work:
+        Exit     = close all open positions at market price
+        Filters  = show open / closed positions
+        Set Safe Exit and chart icon = look only
+    My default: look only, except Exit, which works.
+    ANSWER: They should Work
+    DECIDED FOR NOW (confirm with friend later):
+      Set Safe Exit = set a total profit limit and a total loss limit;
+                      when total P&L reaches either, ALL open positions
+                      are exited at market automatically.
+      Chart icon    = opens a chart of today's total P&L through the day.
+      Filters       = show All / Open / Closed positions.
+      Exit          = close all open positions at market (asks first).
+
+
+Q2. Order page: "Add stoploss/target" (item D5).
+    Should it WORK (auto-sell when price hits the stoploss or
+    target), or be look only?
+    My default: look only.
+    ANSWER:should work
+
+
+Q3. Watchlist panel: "Set alert" (item C4).
+    Look only? (Real alerts would need phone notifications.)
+    My default: look only.
+    ANSWER:should work, send a notification
+
+
+Q4. Header profile photo (item B1).
+    a) let him pick a photo from his phone gallery, or
+    b) just show a plain avatar icon
+    My default: b.
+    ANSWER:b
+
+
+Q5. How to close a position, now that the "Close position" button
+    is removed (item E4)?
+    My plan: tap a position row -> a panel opens with "Exit" and
+    "Add more" (this is how Groww does it).
+    Is that OK?
+    ANSWER:Yes
+
+
+Q6. Demo mode lot size for SENSEX is set to 20. Is that still
+    correct, or has it changed too?
+    My default: leave it at 20.
+    ANSWER:leave it at 20. will confirm from him
+
+
+Q7. Header logo and title (item B1). Decide now or later?
+    My default: later; keep the current placeholder for now.
+    ANSWER:later
+
+
+If you don't want to answer one by one, just write:
+    "use your defaults"
+
+
+---------------------------------------------------------------------
+NOTE: ONE THING I WON'T CHANGE
+---------------------------------------------------------------------
+
+Page 4 asks to remove the DEMO banner and the "Paper Trade" title,
+and other pages ask to make everything identical to Groww.
+
+Together, and used "live", that would make the app look like a real
+Groww account showing real trades and real profits. That can mislead
+people watching, and in India it can run into SEBI rules for
+finfluencers.
+
+What I WILL do:
+  - Make the layout, colours, fonts and flow feel like Groww.
+  - Remove the DEMO / time tags under prices and the wallet icon.
+
+What I will KEEP:
+  - The DEMO banner, ONLY when the app is in Demo mode (fake prices).
+  - A small "Paper" tag in the header in FYERS (real prices) mode.
+
+If his live sessions are for teaching or practice, the "Paper" tag
+also protects him.
+
+=====================================================================

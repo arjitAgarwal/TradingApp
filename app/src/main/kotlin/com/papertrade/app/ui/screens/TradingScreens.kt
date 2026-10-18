@@ -131,15 +131,25 @@ fun PositionsScreen(vm: AppVM) {
 fun HoldingsScreen(vm: AppVM, nav: Nav) {
     val acc by vm.account.collectAsState(); val v by vm.valuation.collectAsState(); val quotes by vm.quotes.collectAsState()
     val holdings = acc?.positions?.values?.filter { vm.info(it.instrumentId)?.segment == Segment.EQUITY || vm.info(it.instrumentId) == null && it.instrumentId.endsWith("-EQ") }?.filter { it.isOpen || it.realizedGross.signum() != 0 } ?: emptyList()
-    if (holdings.isEmpty()) { CenterMessage("No holdings", "Buy a stock from Explore to create a delivery holding."); return }
-    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (holdings.isEmpty()) { EmptyState(Icons.Outlined.Inventory2, "No holdings", "Stocks you buy for delivery show up here."); return }
+    LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
         items(holdings, key = { it.instrumentId }) { p -> val r = v?.positions?.firstOrNull { it.instrumentId == p.instrumentId }; val q = quotes[p.instrumentId]
-            Card(Modifier.fillMaxWidth().clickable { nav.stock(p.instrumentId) }) { Column(Modifier.padding(12.dp)) {
-                Text(p.instrumentId.substringAfter(':').removeSuffix("-EQ") + (vm.info(p.instrumentId)?.let { " · ${it.name}" } ?: ""), fontWeight = FontWeight.SemiBold)
-                StatRow("Quantity", p.quantity.toString()); StatRow("Avg buy price", Fmt.inr(p.avgPrice)); StatRow("Market price", Fmt.inr(q?.ltp))
-                StatRow("Invested", Fmt.rupee(p.avgPrice * BigDecimal(p.quantity))); StatRow("Market value", Fmt.rupee(r?.marketValue))
-                StatRow("Realized P&L", Fmt.signed(p.realizedGross), Fmt.color(p.realizedGross, MaterialTheme.colorScheme.onSurface)); StatRow("Unrealized P&L", Fmt.signed(r?.unrealized), Fmt.color(r?.unrealized, MaterialTheme.colorScheme.onSurface))
-            } } }
+            val pnl = r?.unrealized?.let { it + p.realizedGross } ?: p.realizedGross
+            // Flat row: name / "qty shares · Avg ₹x" on the left; P&L / "LTP ₹y" on the right.
+            Column(Modifier.fillMaxWidth().clickable { nav.stock(p.instrumentId) }.testTag("holding_${p.instrumentId}")) {
+                Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(p.instrumentId.substringAfter(':').removeSuffix("-EQ"), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text("${p.quantity} shares · Avg ${Fmt.rupee(p.avgPrice)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
+                        Text("LTP ${Fmt.rupee(q?.ltp)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        }
     }
 }
 
