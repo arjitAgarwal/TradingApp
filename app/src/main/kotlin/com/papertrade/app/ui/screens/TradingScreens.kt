@@ -12,9 +12,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -27,6 +29,9 @@ import com.papertrade.app.data.repo.FyersAuthState
 import com.papertrade.app.ui.AppVM
 import com.papertrade.app.ui.Fmt
 import com.papertrade.app.ui.components.*
+import com.papertrade.app.ui.theme.Gain
+import com.papertrade.app.ui.theme.Loss
+import com.papertrade.app.ui.theme.Warn
 import com.papertrade.core.*
 import java.math.BigDecimal
 
@@ -34,21 +39,27 @@ private fun name(vm: AppVM, id: String) = vm.info(id)?.let { it.name.takeIf { n 
 
 @Composable
 fun OrdersScreen(vm: AppVM) {
-    val acc by vm.account.collectAsState(); var filter by rememberSaveable { mutableStateOf("All") }; var sel by remember { mutableStateOf<Order?>(null) }
-    val orders = (acc?.orders?.values ?: emptyList()).sortedByDescending { it.createdAt }.filter {
-        when (filter) { "Open" -> it.status.isActive || it.status == OrderStatus.CREATED; "Filled" -> it.status == OrderStatus.FILLED; "Cancelled" -> it.status == OrderStatus.CANCELLED; "Rejected" -> it.status == OrderStatus.REJECTED; else -> true } }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("All", "Open", "Filled", "Cancelled", "Rejected").forEach { FilterChip(filter == it, { filter = it }, { Text(it) }, modifier = Modifier.testTag("filter_$it")) } }
-        Text("Simulated orders only", fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (orders.isEmpty()) CenterMessage("No orders", "Orders you place in the simulation appear here.")
-        else LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(orders, key = { it.id }) { o -> Card(Modifier.fillMaxWidth().clickable { sel = o }.testTag("order_${o.id}")) { Column(Modifier.padding(12.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("${o.side} ${name(vm, o.instrumentId)}", fontWeight = FontWeight.SemiBold); Text(o.status.name.replace('_', ' '), fontWeight = FontWeight.Bold) }
-                Text("${o.type} · qty ${o.filledQuantity}/${o.quantity}" + (o.limitPrice?.let { " · limit ${Fmt.inr(it)}" } ?: "") + (o.avgFillPrice?.let { " · avg ${Fmt.inr(it)}" } ?: ""), fontSize = 12.sp)
-                Text("Placed ${Fmt.time(o.createdAt)}" + (o.executedAt?.let { " · executed ${Fmt.time(it)}" } ?: ""), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                o.rejectReason?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
-            } } }
+    val acc by vm.account.collectAsState(); var showAll by rememberSaveable { mutableStateOf(false) }; var sel by remember { mutableStateOf<Order?>(null) }
+    val all = (acc?.orders?.values ?: emptyList()).sortedByDescending { it.createdAt }
+    val open = all.filter { it.status.isActive || it.status == OrderStatus.CREATED }
+    // "Every trade made": anything that got at least one fill. Cancelled/rejected orders only appear under "All orders".
+    val traded = all.filter { it !in open && it.filledQuantity > 0 }
+    val shown = if (showAll) all else open + traded
+    if (shown.isEmpty()) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) { EmptyState(Icons.Outlined.Inventory2, "You have no orders", "Trades you make show up here.") }
+            if (all.isNotEmpty()) TextButton({ showAll = true }, Modifier.align(Alignment.CenterHorizontally).padding(bottom = 24.dp).testTag("all_orders")) { Text("All orders") }
         }
+    } else LazyColumn(Modifier.fillMaxSize()) {
+        if (showAll) {
+            item { SectionHeader("All orders") { TextButton({ showAll = false }) { Text("Back to trades") } } }
+            items(all, key = { it.id }) { o -> OrderRow(vm, o) { sel = o } }
+        } else {
+            if (open.isNotEmpty()) { item { SectionHeader("Open (${open.size})") }; items(open, key = { it.id }) { o -> OrderRow(vm, o) { sel = o } } }
+            if (traded.isNotEmpty()) { item { SectionHeader("Executed (${traded.size})") }; items(traded, key = { it.id }) { o -> OrderRow(vm, o) { sel = o } } }
+            if (all.size > shown.size) item { TextButton({ showAll = true }, Modifier.padding(horizontal = 8.dp).testTag("all_orders")) { Text("All orders") } }
+        }
+        item { Text("Simulated orders only", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
     }
     sel?.let { o0 -> val o = acc?.orders?.get(o0.id) ?: o0; val fills = acc?.fills?.filter { it.orderId == o.id } ?: emptyList()
         AlertDialog(onDismissRequest = { sel = null }, title = { Text("Order ${o.id}") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -58,6 +69,39 @@ fun OrdersScreen(vm: AppVM) {
             o.rejectReason?.let { Text(it, color = MaterialTheme.colorScheme.error) } } },
             confirmButton = { if (o.status.isActive || o.status == OrderStatus.CREATED) TextButton({ vm.cancel(o.id); sel = null }, modifier = Modifier.testTag("cancel_order")) { Text("Cancel order") } else TextButton({ sel = null }) { Text("Close") } },
             dismissButton = { if (o.status.isActive) TextButton({ sel = null }) { Text("Close") } })
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String, trailing: @Composable () -> Unit = {}) =
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)); trailing()
+    }
+
+/** Flat row: name and "BUY · 65 qty · 18 Oct, 10:42" on the left; price and status on the right. */
+@Composable
+private fun OrderRow(vm: AppVM, o: Order, onClick: () -> Unit) {
+    val (status, statusColor) = when (o.status) {
+        OrderStatus.FILLED -> "Executed" to Gain; OrderStatus.PARTIALLY_FILLED -> "Partly executed" to Warn
+        OrderStatus.OPEN, OrderStatus.CREATED -> "Open" to Warn; OrderStatus.CANCELLED -> "Cancelled" to MaterialTheme.colorScheme.onSurfaceVariant
+        OrderStatus.REJECTED -> "Rejected" to Loss
+    }
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("order_${o.id}")) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(name(vm, o.instrumentId), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(o.side.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (o.side == Side.BUY) Gain else Loss)
+                    Text(" · ${if (o.filledQuantity > 0) o.filledQuantity else o.quantity} qty · ${Fmt.time(o.executedAt ?: o.createdAt).removeSuffix(" IST")}",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(Fmt.rupee(o.avgFillPrice ?: o.limitPrice), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text(status, fontSize = 12.sp, color = statusColor)
+            }
+        }
+        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
     }
 }
 

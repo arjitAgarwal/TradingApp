@@ -11,11 +11,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CandlestickChart
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -80,8 +84,16 @@ fun AppHeader(onSearch: () -> Unit, onProfile: () -> Unit) {
 
 @Composable
 fun MainScreen(vm: AppVM, nav: Nav) {
-    val tabs = listOf("Explore", "Holdings", "Positions", "Orders")
+    // Fixed tabs, then one tab per watchlist (named by the user, like Groww), then "+" to add a watchlist.
+    val fixedTabs = listOf("Explore", "Holdings", "Positions", "Orders")
+    val lists by vm.watchlists.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var newList by remember { mutableStateOf(false) }; var openNewList by remember { mutableStateOf(false) }
+    LaunchedEffect(lists.size) {
+        if (openNewList) { tab = fixedTabs.size + lists.size - 1; openNewList = false } // jump to the list just created
+        else if (tab >= fixedTabs.size + lists.size) tab = 0 // its watchlist was deleted
+    }
+    val selected = tab.coerceIn(0, fixedTabs.size + lists.size - 1) // never index past the tabs while a deletion settles
     val settings by vm.settings.collectAsState(); val feed by vm.feed.collectAsState()
     val auth by vm.fyersAuth.collectAsState()
     val snack = remember { SnackbarHostState() }
@@ -97,19 +109,62 @@ fun MainScreen(vm: AppVM, nav: Nav) {
             }
             if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
             // Plain text tabs, underline on the selected one; scrolls instead of wrapping "Positions" onto two lines.
-            ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp, containerColor = MaterialTheme.colorScheme.surface, divider = { HorizontalDivider() },
-                indicator = { pos -> TabRowDefaults.SecondaryIndicator(with(TabRowDefaults) { Modifier.tabIndicatorOffset(pos[tab]) }, height = 3.dp, color = MaterialTheme.colorScheme.onSurface) }) {
-                tabs.forEachIndexed { i, t ->
-                    Tab(tab == i, { tab = i }, selectedContentColor = MaterialTheme.colorScheme.onSurface, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        text = { Text(t, fontSize = 16.sp, fontWeight = if (tab == i) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, softWrap = false) }, modifier = Modifier.testTag("tab_$t"))
+            ScrollableTabRow(selectedTabIndex = selected, edgePadding = 8.dp, containerColor = MaterialTheme.colorScheme.surface, divider = { HorizontalDivider() },
+                indicator = { pos -> TabRowDefaults.SecondaryIndicator(with(TabRowDefaults) { Modifier.tabIndicatorOffset(pos[selected]) }, height = 3.dp, color = MaterialTheme.colorScheme.onSurface) }) {
+                (fixedTabs.map { it to "tab_$it" } + lists.map { it.name to "tab_wl_${it.id}" }).forEachIndexed { i, (t, tag) ->
+                    Tab(selected == i, { tab = i }, selectedContentColor = MaterialTheme.colorScheme.onSurface, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = { Text(t, fontSize = 16.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, softWrap = false) }, modifier = Modifier.testTag(tag))
                 }
+                Tab(false, { newList = true }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, icon = { Icon(Icons.Default.Add, "New watchlist") }, modifier = Modifier.testTag("tab_add_watchlist"))
             }
         }
     }, bottomBar = { BottomBar(onFno = { nav.chain(Underlying.NIFTY) }, onUnavailable = { vm.messages.tryEmit("$it isn't part of this paper-trading app") }) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
-            when (tab) { 0 -> ExploreScreen(vm, nav); 1 -> HoldingsScreen(vm, nav); 2 -> PositionsScreen(vm); else -> OrdersScreen(vm) }
+            when (selected) {
+                0 -> ExploreScreen(vm, nav); 1 -> HoldingsScreen(vm, nav); 2 -> PositionsScreen(vm); 3 -> OrdersScreen(vm)
+                else -> lists.getOrNull(selected - fixedTabs.size)?.let { WatchlistScreen(vm, nav, it, canDelete = lists.size > 1) }
+            }
         }
     }
+    if (newList) NameDialog("New watchlist", "") { name -> newList = false; name?.let { openNewList = true; vm.createWatchlist(it) } }
+}
+
+/** One watchlist tab: "N items" with rename/delete, then its instruments. Tap a row to open it; ★ removes it. */
+@Composable
+fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watchlist, canDelete: Boolean) {
+    val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
+    var renaming by remember { mutableStateOf(false) }; var confirmDelete by remember { mutableStateOf(false) }
+    DisposableEffect(list.id, list.items.size) { vm.subscribe("watchlist", list.items.map { it.symbol }.toSet()); onDispose { vm.unsubscribe("watchlist") } }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${list.items.size} ${if (list.items.size == 1) "item" else "items"}", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            IconButton({ renaming = true }, Modifier.testTag("rename_watchlist")) { Icon(Icons.Default.Edit, "Rename watchlist") }
+            if (canDelete) IconButton({ confirmDelete = true }, Modifier.testTag("delete_watchlist")) { Icon(Icons.Default.DeleteOutline, "Delete watchlist") }
+        }
+        if (list.items.isEmpty()) EmptyState(Icons.Default.StarBorder, "This watchlist is empty", "Search in Explore and tap ☆ to add a stock.")
+        else LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(list.items, key = { it.symbol }) { item ->
+                StockRow(item.symbol, item.name, quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()), true,
+                    onClick = { if (item.symbol.endsWith("-EQ")) nav.stock(item.symbol) else nav.contract(item.symbol) },
+                    onToggle = { vm.removeFromWatchlist(list.id, item.symbol) })
+            }
+        }
+    }
+    if (renaming) NameDialog("Rename watchlist", list.name) { name -> renaming = false; name?.let { vm.renameWatchlist(list.id, it) } }
+    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete \"${list.name}\"?") },
+        text = { Text("The watchlist and its ${list.items.size} items will be removed.") },
+        confirmButton = { TextButton({ confirmDelete = false; vm.deleteWatchlist(list.id) }) { Text("Delete") } },
+        dismissButton = { TextButton({ confirmDelete = false }) { Text("Cancel") } })
+}
+
+/** Text prompt for a watchlist name; calls back with the name, or null if cancelled. */
+@Composable
+private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(onDismissRequest = { onDone(null) }, title = { Text(title) },
+        text = { OutlinedTextField(text, { text = it }, singleLine = true, placeholder = { Text("e.g. Fut") }, modifier = Modifier.testTag("watchlist_name")) },
+        confirmButton = { TextButton({ onDone(text.trim()) }, enabled = text.isNotBlank()) { Text("Save") } },
+        dismissButton = { TextButton({ onDone(null) }) { Text("Cancel") } })
 }
 
 /** Stocks is this screen; F&O opens the NIFTY option chain; Mutual Funds and Loans don't exist here, so they only explain that. */
@@ -139,19 +194,17 @@ class Nav(val index: (Underlying) -> Unit, val stock: (String) -> Unit, val chai
 @Composable
 fun ExploreScreen(vm: AppVM, nav: Nav) {
     val lists by vm.watchlists.collectAsState(); val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
-    var selected by rememberSaveable { mutableLongStateOf(-1L) }
     var query by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<UiState<List<com.papertrade.app.data.market.InstrumentInfo>>?>(null) }
-    var dialog by remember { mutableStateOf<String?>(null) } // "new" or "rename"
-    val current = lists.firstOrNull { it.id == selected } ?: lists.firstOrNull()
+    var picking by remember { mutableStateOf<com.papertrade.app.data.market.InstrumentInfo?>(null) } // stock whose ☆ was tapped
     val provider by vm.provider.collectAsState()
     LaunchedEffect(query, provider) {
         if (query.length < 2) { results = null; return@LaunchedEffect }
         kotlinx.coroutines.delay(350); results = UiState.Loading
         results = vm.search(query).fold({ UiState.Success(it) }, { it.toUi() })
     }
-    DisposableEffect(current?.items?.size, results) {
-        val syms = (current?.items?.map { it.symbol } ?: emptyList()) + ((results as? UiState.Success)?.data?.take(10)?.map { it.symbol } ?: emptyList())
+    DisposableEffect(results) {
+        val syms = (results as? UiState.Success)?.data?.take(10)?.map { it.symbol } ?: emptyList()
         vm.subscribe("explore", syms.toSet()); onDispose { vm.unsubscribe("explore") }
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -171,32 +224,27 @@ fun ExploreScreen(vm: AppVM, nav: Nav) {
             UiState.Loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             is UiState.Error -> item { Text(r.message, color = MaterialTheme.colorScheme.error) }
             is UiState.Success -> if (r.data.isEmpty()) item { Text("No matching stocks") } else items(r.data, key = { it.symbol }) { i ->
-                StockRow(i.symbol, i.name, quotes[i.symbol], freshnessOf(quotes[i.symbol], now, vm.maxAgeSec()), current != null && current.items.any { it.symbol == i.symbol },
+                StockRow(i.symbol, i.name, quotes[i.symbol], freshnessOf(quotes[i.symbol], now, vm.maxAgeSec()), lists.any { w -> w.items.any { it.symbol == i.symbol } },
                     onClick = { vm.info(i.symbol) ?: vm.register(i); nav.stock(i.symbol) },
-                    onToggle = { current?.let { w -> if (w.items.any { it.symbol == i.symbol }) vm.removeFromWatchlist(w.id, i.symbol) else { vm.register(i); vm.addToWatchlist(w.id, i.symbol, i.name) } } })
+                    onToggle = { picking = i })
             }
         } }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                lists.forEach { w -> FilterChip(current?.id == w.id, { selected = w.id }, { Text(w.name) }) }
-                AssistChip(onClick = { dialog = "new" }, label = { Text("+ New") })
-            }
-        }
-        if (current != null) {
-            item { Row { TextButton({ dialog = "rename" }) { Text("Rename") }; if (lists.size > 1) TextButton({ vm.deleteWatchlist(current.id); selected = -1 }) { Text("Delete list") } } }
-            if (current.items.isEmpty()) item { Text("This watchlist is empty. Search for a stock and tap ☆ to add it.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            items(current.items, key = { it.symbol }) { it ->
-                StockRow(it.symbol, it.name, quotes[it.symbol], freshnessOf(quotes[it.symbol], now, vm.maxAgeSec()), true, onClick = { nav.stock(it.symbol) }, onToggle = { vm.removeFromWatchlist(current.id, it.symbol) })
-            }
-        }
+        if (results == null) item { Text("Your watchlists are the tabs after Orders. Search for a stock and tap ☆ to add it to one.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
-    dialog?.let { mode ->
-        var text by remember { mutableStateOf(if (mode == "rename") current?.name ?: "" else "") }
-        AlertDialog(onDismissRequest = { dialog = null }, title = { Text(if (mode == "new") "New watchlist" else "Rename watchlist") },
-            text = { OutlinedTextField(text, { text = it }, singleLine = true) },
-            confirmButton = { TextButton({ if (mode == "new") vm.createWatchlist(text) else current?.let { vm.renameWatchlist(it.id, text) }; dialog = null }) { Text("Save") } },
-            dismissButton = { TextButton({ dialog = null }) { Text("Cancel") } })
-    }
+    picking?.let { i -> WatchlistPicker(lists, i.symbol, onDismiss = { picking = null }) { w, add ->
+        if (add) { vm.register(i); vm.addToWatchlist(w.id, i.symbol, i.name) } else vm.removeFromWatchlist(w.id, i.symbol)
+    } }
+}
+
+/** "Add to watchlist" sheet: one checkbox per watchlist; ticking adds, unticking removes. */
+@Composable
+private fun WatchlistPicker(lists: List<com.papertrade.app.data.repo.Watchlist>, symbol: String, onDismiss: () -> Unit, onToggle: (com.papertrade.app.data.repo.Watchlist, Boolean) -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Add to watchlist") }, text = {
+        Column { lists.forEach { w -> val inList = w.items.any { it.symbol == symbol }
+            Row(Modifier.fillMaxWidth().clickable { onToggle(w, !inList) }.testTag("pick_${w.id}"), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(inList, { onToggle(w, it) }); Text(w.name)
+            } } }
+    }, confirmButton = { TextButton(onDismiss) { Text("Done") } })
 }
 
 @Composable
