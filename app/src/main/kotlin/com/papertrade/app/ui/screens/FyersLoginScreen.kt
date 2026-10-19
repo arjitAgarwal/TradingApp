@@ -3,6 +3,7 @@ package com.papertrade.app.ui.screens
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
+import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -105,6 +106,9 @@ fun UpstoxLoginScreen(vm: AppVM, nav: Nav) {
 @Composable
 private fun LoginWebView(url: String?, onUrl: (String) -> Boolean) = AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx ->
     WebView(ctx).apply {
+        // AndroidView defaults to WRAP_CONTENT, and a wrap-content WebView resolves CSS height units (vh, %, dvh) to 0.
+        // Upstox' login page sizes itself with them, so without this it collapses: blank page, no logo/button, broken typing.
+        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         settings.javaScriptEnabled = true; settings.domStorageEnabled = true
         webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = onUrl(request.url.toString())

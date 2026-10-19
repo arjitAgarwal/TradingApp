@@ -71,7 +71,7 @@ fun IndexScreen(c: AppContainer, vm: AppVM, u: Underlying, nav: Nav) {
 @Composable
 fun StockScreen(c: AppContainer, vm: AppVM, symbol: String, nav: Nav) {
     val q = vm.quotes.collectAsState().value[symbol]; val lists by vm.watchlists.collectAsState()
-    var info by remember { mutableStateOf(vm.info(symbol)) }; var err by remember { mutableStateOf<String?>(null) }; var ticket by remember { mutableStateOf<Side?>(null) }
+    var info by remember { mutableStateOf(vm.info(symbol)) }; var err by remember { mutableStateOf<String?>(null) }
     DisposableEffect(symbol) { vm.subscribe("stock", setOf(symbol)); onDispose { vm.unsubscribe("stock") } }
     LaunchedEffect(symbol) { if (info == null) vm.equityInfo(symbol).fold({ info = it; vm.register(it) }, { err = it.message }) }
     DetailScaffold(symbol.substringAfter(':').removeSuffix("-EQ"), nav) {
@@ -82,11 +82,10 @@ fun StockScreen(c: AppContainer, vm: AppVM, symbol: String, nav: Nav) {
         val inList = lists.firstOrNull()?.items?.any { it.symbol == symbol } == true
         lists.firstOrNull()?.let { w -> info?.let { i -> OutlinedButton({ if (inList) vm.removeFromWatchlist(w.id, symbol) else vm.addToWatchlist(w.id, symbol, i.name) }) { Text(if (inList) "Remove from ${w.name}" else "Add to ${w.name}") } } }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button({ ticket = Side.BUY }, Modifier.weight(1f).testTag("btn_buy"), enabled = info != null) { Text("Buy") }
-            OutlinedButton({ ticket = Side.SELL }, Modifier.weight(1f).testTag("btn_sell"), enabled = info != null) { Text("Sell") }
+            Button({ nav.order(symbol, Side.BUY) }, Modifier.weight(1f).testTag("btn_buy"), enabled = info != null) { Text("Buy") }
+            OutlinedButton({ nav.order(symbol, Side.SELL) }, Modifier.weight(1f).testTag("btn_sell"), enabled = info != null) { Text("Sell") }
         }
     }
-    ticket?.let { s -> info?.let { OrderTicket(it, q, vm, s) { ticket = null } } }
 }
 
 @Composable
@@ -169,7 +168,7 @@ fun FuturesScreen(c: AppContainer, vm: AppVM, u: Underlying, nav: Nav) {
 
 @Composable
 fun ContractScreen(vm: AppVM, symbol: String, nav: Nav) {
-    val info = vm.info(symbol); val q = vm.quotes.collectAsState().value[symbol]; var ticket by remember { mutableStateOf<Side?>(null) }
+    val info = vm.info(symbol); val q = vm.quotes.collectAsState().value[symbol]
     DisposableEffect(symbol) { vm.subscribe("contract", setOf(symbol)); onDispose { vm.unsubscribe("contract") } }
     DetailScaffold(info?.let { "${it.underlying ?: ""} ${it.strike?.let { s -> Fmt.inr(s, 0) } ?: "FUT"} ${it.optionType ?: ""}" } ?: symbol, nav) {
         if (info == null) { Text("Contract metadata (lot size, tick size) is unavailable from the provider, so this contract can't be traded in the simulation.", color = MaterialTheme.colorScheme.error); return@DetailScaffold }
@@ -181,9 +180,8 @@ fun ContractScreen(vm: AppVM, symbol: String, nav: Nav) {
             StatRow("Implied volatility", q?.impliedVol?.let { Fmt.inr(it) + "%" } ?: "—")
         } }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button({ ticket = Side.BUY }, Modifier.weight(1f).testTag("btn_buy")) { Text("Buy") }
-            OutlinedButton({ ticket = Side.SELL }, Modifier.weight(1f).testTag("btn_sell")) { Text("Sell") }
+            Button({ nav.order(symbol, Side.BUY) }, Modifier.weight(1f).testTag("btn_buy")) { Text("Buy") }
+            OutlinedButton({ nav.order(symbol, Side.SELL) }, Modifier.weight(1f).testTag("btn_sell")) { Text("Sell") }
         }
     }
-    ticket?.let { s -> info?.let { OrderTicket(it, q, vm, s) { ticket = null } } }
 }
