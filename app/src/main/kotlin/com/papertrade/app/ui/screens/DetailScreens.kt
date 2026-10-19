@@ -99,7 +99,19 @@ fun ChainScreen(c: AppContainer, vm: AppVM, u: Underlying, nav: Nav) {
 @Composable
 private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: Nav, now: java.time.Instant) {
     val chain = ui.chain
-    Scaffold(topBar = { TopAppBar(title = { Text("${u.displayName} option chain") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
+    val lists by vm.watchlists.collectAsState(); val first = lists.firstOrNull()
+    val snack = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
+    // Tapping a strike only adds it to the first watchlist; buying/selling happens from there.
+    val add: (OptionSide) -> Unit = { s ->
+        when {
+            first == null -> vm.messages.tryEmit("Create a watchlist first")
+            first.items.any { it.symbol == s.symbol } -> vm.messages.tryEmit("Already in ${first.name}")
+            else -> { s.info?.let(vm::register); vm.addToWatchlist(first.id, s.symbol, s.info?.name ?: s.symbol); vm.messages.tryEmit("Added to ${first.name}") }
+        }
+    }
+    val inList = first?.items?.map { it.symbol }?.toSet().orEmpty()
+    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Text("${u.displayName} option chain") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
         Column(Modifier.padding(pad)) {
             if (chain == null) { if (ui.error != null) CenterMessage(if (ui.offline) "You're offline" else "Option chain unavailable", ui.error, cv::start) else Loading(); return@Column }
             Column(Modifier.padding(horizontal = 12.dp)) {
@@ -120,10 +132,10 @@ private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: N
             LazyColumn(Modifier.testTag("chain_table")) {
                 items(chain.rows, key = { it.strike.toPlainString() }) { r ->
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Cell(r.call, Modifier.weight(1f), nav, Alignment.Start)
+                        Cell(r.call, Modifier.weight(1f), r.call?.symbol in inList, Alignment.Start, add)
                         Text(Fmt.inr(r.strike, 0), Modifier.width(80.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontWeight = if (r.strike == atm) FontWeight.ExtraBold else FontWeight.Medium,
                             color = if (r.strike == atm) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                        Cell(r.put, Modifier.weight(1f), nav, Alignment.End)
+                        Cell(r.put, Modifier.weight(1f), r.put?.symbol in inList, Alignment.End, add)
                     }
                     HorizontalDivider()
                 }
@@ -133,9 +145,9 @@ private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: N
 }
 
 @Composable
-private fun Cell(s: OptionSide?, m: Modifier, nav: Nav, align: Alignment.Horizontal) {
-    Column(m.clickable(enabled = s != null) { s?.let { nav.contract(it.symbol) } }.padding(vertical = 6.dp), horizontalAlignment = align) {
-        Text(Fmt.inr(s?.quote?.ltp), fontWeight = FontWeight.SemiBold)
+private fun Cell(s: OptionSide?, m: Modifier, added: Boolean, align: Alignment.Horizontal, onAdd: (OptionSide) -> Unit) {
+    Column(m.clickable(enabled = s != null) { s?.let(onAdd) }.then(s?.let { Modifier.testTag("chain_cell_${it.symbol}") } ?: Modifier).padding(vertical = 6.dp), horizontalAlignment = align) {
+        Text((if (added) "★ " else "") + Fmt.inr(s?.quote?.ltp), fontWeight = FontWeight.SemiBold)
         Text(Fmt.pct(s?.quote?.changePct), fontSize = 11.sp, color = Fmt.color(s?.quote?.changePct, MaterialTheme.colorScheme.onSurface))
     }
 }

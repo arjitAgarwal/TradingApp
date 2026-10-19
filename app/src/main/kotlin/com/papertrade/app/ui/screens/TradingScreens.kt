@@ -24,8 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.papertrade.app.data.market.DataMode
+import com.papertrade.app.data.market.LiveSource
 import com.papertrade.app.data.repo.AppSettings
-import com.papertrade.app.data.repo.FyersAuthState
+import com.papertrade.app.data.repo.LoginState
 import com.papertrade.app.ui.AppVM
 import com.papertrade.app.ui.Fmt
 import com.papertrade.app.ui.components.*
@@ -157,40 +158,51 @@ fun HoldingsScreen(vm: AppVM, nav: Nav) {
 @Composable
 fun AccountScreen(vm: AppVM, nav: Nav) {
     val acc by vm.account.collectAsState(); val v by vm.valuation.collectAsState(); val settings by vm.settings.collectAsState(); val ctx: Context = LocalContext.current
-    val auth by vm.fyersAuth.collectAsState()
-    var appId by remember { mutableStateOf("") }; var secret by remember { mutableStateOf("") }; var redirect by remember { mutableStateOf("") }
-    var showSetup by remember { mutableStateOf(false) }; var confirmReset by remember { mutableStateOf(false) }
+    val auth by vm.fyersAuth.collectAsState(); val upstoxAuth by vm.upstoxAuth.collectAsState()
+    var confirmReset by remember { mutableStateOf(false) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         uri?.let { vm.export { text -> ctx.contentResolver.openOutputStream(it)?.use { o -> o.write(text.toByteArray()) } } } }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let { vm.import(ctx.contentResolver.openInputStream(it)?.bufferedReader()?.readText() ?: "") } }
     Scaffold(topBar = { TopAppBar(title = { Text("Account & settings") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
         Column(Modifier.padding(pad).padding(12.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Card { Column(Modifier.padding(12.dp)) {
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
                 Text("Virtual wallet (simulation only)", fontWeight = FontWeight.SemiBold)
                 StatRow("Starting capital", Fmt.rupee(acc?.wallet?.startingCapital)); StatRow("Available cash", Fmt.rupee(v?.availableCash)); StatRow("Reserved margin (simulated)", Fmt.rupee(v?.reservedMargin))
                 StatRow("Realized P&L", Fmt.signed(v?.realizedGross)); StatRow("Unrealized P&L", Fmt.signed(v?.unrealized)); StatRow("Simulated charges", Fmt.rupee(v?.totalCharges))
                 StatRow("Net P&L", Fmt.signed(v?.netPnl), Fmt.color(v?.netPnl, MaterialTheme.colorScheme.onSurface)); StatRow("Total equity", Fmt.rupee(v?.equity), Color.Unspecified)
             } }
-            Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Market data", fontWeight = FontWeight.SemiBold)
-                Row { listOf(DataMode.DEMO to "Demo (synthetic)", DataMode.LIVE_PROVIDER to "FYERS (real)").forEach { (m, l) -> FilterChip(settings.dataMode == m, { vm.saveSettings(settings.copy(dataMode = m)) }, { Text(l) }, modifier = Modifier.testTag("mode_${m.name}")) } }
-                Text(when (auth) {
-                    FyersAuthState.READY -> "FYERS: logged in. Renews itself every day" + (vm.fyersLoginValidUntil()?.let { "; next login needed around ${Fmt.time(it)}" } ?: "") + "."
-                    FyersAuthState.NEEDS_LOGIN -> "FYERS: not logged in (or the 15-day login ran out). Tap Log in."
-                    FyersAuthState.NOT_SET_UP -> "FYERS: app details not set up yet (one-time, see Setup below)."
-                }, fontSize = 12.sp, modifier = Modifier.testTag("fyers_status"))
-                Row { Button(nav.fyersLogin, enabled = auth != FyersAuthState.NOT_SET_UP, modifier = Modifier.testTag("fyers_login")) { Text("Log in to FYERS") }; Spacer(Modifier.width(8.dp)); OutlinedButton({ vm.logoutFyers() }, enabled = auth == FyersAuthState.READY) { Text("Log out") } }
-                TextButton({ showSetup = !showSetup }) { Text(if (showSetup) "Hide setup" else "Setup (app owner, one time)") }
-                if (showSetup) {
-                    Text("From https://myapi.fyers.in/dashboard/. Only a hash of the secret is stored. The redirect URI must exactly match the one registered for the FYERS app.", fontSize = 12.sp)
-                    OutlinedTextField(appId, { appId = it }, label = { Text("FYERS app id") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(secret, { secret = it }, label = { Text("App secret") }, singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(redirect, { redirect = it }, label = { Text("Redirect URI") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Button({ vm.setupFyers(appId, secret, redirect); secret = ""; showSetup = false }, enabled = appId.isNotBlank() && secret.isNotBlank() && redirect.isNotBlank()) { Text("Save setup") }
+                // One toggle: synthetic demo prices, or real prices from FYERS or Upstox. Saved symbols work with either broker.
+                val choice = if (settings.dataMode == DataMode.DEMO) null else settings.liveSource
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(choice == null, { vm.saveSettings(settings.copy(dataMode = DataMode.DEMO)) }, { Text("Demo") }, modifier = Modifier.testTag("mode_DEMO"))
+                    LiveSource.values().forEach { s ->
+                        FilterChip(choice == s, { vm.saveSettings(settings.copy(dataMode = DataMode.LIVE_PROVIDER, liveSource = s)) }, { Text(s.displayName) }, modifier = Modifier.testTag("mode_${s.name}"))
+                    }
                 }
+                Text(if (choice == null) "Synthetic prices, no login needed." else "Real prices from ${choice.displayName}. Trades are still simulated.", fontSize = 12.sp)
             } }
-            Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                BrokerLogin("FYERS", auth, when (auth) {
+                    LoginState.READY -> "Logged in. Renews itself every day" + (vm.fyersLoginValidUntil()?.let { "; next login needed around ${Fmt.time(it)}" } ?: "") + "."
+                    LoginState.NEEDS_LOGIN -> "Not logged in (or the 15-day login ran out). Tap Log in."
+                    LoginState.NOT_SET_UP -> "App details not set up yet (one time, see Setup below)."
+                }, "fyers", nav.fyersLogin, vm::logoutFyers,
+                    "From https://myapi.fyers.in/dashboard/. Only a hash of the secret is stored. The redirect URI must exactly match the one registered for the FYERS app.",
+                    "FYERS app id", vm::setupFyers)
+            } }
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                BrokerLogin("Upstox", upstoxAuth, when (upstoxAuth) {
+                    LoginState.READY -> "Logged in until ${vm.upstoxLoginValidUntil()?.let { Fmt.time(it) } ?: "3:30 AM"}. Upstox needs a fresh login every day."
+                    LoginState.NEEDS_LOGIN -> "Not logged in. Upstox logins end at 3:30 AM every day. Tap Log in."
+                    LoginState.NOT_SET_UP -> "App details not set up yet (one time, see Setup below)."
+                }, "upstox", nav.upstoxLogin, vm::logoutUpstox,
+                    "From https://account.upstox.com/developer/apps. The API secret is stored encrypted on this phone. The redirect URI must exactly match the one registered for the Upstox app.",
+                    "Upstox API key", vm::setupUpstox)
+            } }
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Simulation rules", fontWeight = FontWeight.SemiBold)
                 IntField("Max quote age (seconds)", settings.maxQuoteAgeSec) { vm.saveSettings(settings.copy(maxQuoteAgeSec = it.coerceIn(1, 3600))) }
                 IntField("LTP-only slippage (bps)", settings.slippageBps) { vm.saveSettings(settings.copy(slippageBps = it.coerceIn(0, 1000))) }
@@ -198,7 +210,7 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Switch(settings.chargesEnabled, { vm.saveSettings(settings.copy(chargesEnabled = it)) }); Text("  Apply illustrative charges") }
                 Text("Charge rates and margin percentages are illustrative assumptions, not official broker/exchange figures.", fontSize = 11.sp)
             } }
-            Card { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Backup", fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton({ exportLauncher.launch("papertrade-export.json") }) { Text("Export") }; OutlinedButton({ importLauncher.launch(arrayOf("application/json", "text/plain")) }) { Text("Import") } }
                 Button({ confirmReset = true }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Reset simulation to ₹10,00,000") }
@@ -207,6 +219,25 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
     }
     if (confirmReset) AlertDialog(onDismissRequest = { confirmReset = false }, title = { Text("Reset simulation?") }, text = { Text("All simulated orders, trades and positions will be deleted. Export first if you want a backup.") },
         confirmButton = { TextButton({ vm.reset(); confirmReset = false }) { Text("Reset") } }, dismissButton = { TextButton({ confirmReset = false }) { Text("Cancel") } })
+}
+
+/** Login status, Log in / Log out, and the one-time app setup (key, secret, redirect URI) for one broker. */
+@Composable
+private fun BrokerLogin(broker: String, auth: LoginState, statusText: String, tag: String, onLogin: () -> Unit, onLogout: () -> Unit,
+                        setupHelp: String, keyLabel: String, onSetup: (String, String, String) -> Unit) {
+    var showSetup by remember { mutableStateOf(false) }
+    var key by remember { mutableStateOf("") }; var secret by remember { mutableStateOf("") }; var redirect by remember { mutableStateOf("") }
+    Text(broker, fontWeight = FontWeight.SemiBold)
+    Text(statusText, fontSize = 12.sp, modifier = Modifier.testTag("${tag}_status"))
+    Row { Button(onLogin, enabled = auth != LoginState.NOT_SET_UP, modifier = Modifier.testTag("${tag}_login")) { Text("Log in to $broker") }; Spacer(Modifier.width(8.dp)); OutlinedButton(onLogout, enabled = auth == LoginState.READY) { Text("Log out") } }
+    TextButton({ showSetup = !showSetup }) { Text(if (showSetup) "Hide setup" else "Setup (app owner, one time)") }
+    if (showSetup) {
+        Text(setupHelp, fontSize = 12.sp)
+        OutlinedTextField(key, { key = it }, label = { Text(keyLabel) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(secret, { secret = it }, label = { Text("App secret") }, singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(redirect, { redirect = it }, label = { Text("Redirect URI") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Button({ onSetup(key, secret, redirect); secret = ""; showSetup = false }, enabled = key.isNotBlank() && secret.isNotBlank() && redirect.isNotBlank()) { Text("Save setup") }
+    }
 }
 
 @Composable

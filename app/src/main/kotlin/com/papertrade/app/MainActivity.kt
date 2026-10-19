@@ -18,6 +18,10 @@ import com.papertrade.app.ui.screens.*
 import com.papertrade.app.ui.theme.PaperTheme
 
 class MainActivity : ComponentActivity() {
+    private val hub get() = (application as PaperTradeApp).container.hub
+    override fun onStart() { super.onStart(); hub.foreground.value = true }
+    override fun onStop() { super.onStop(); hub.foreground.value = false }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val container = (application as PaperTradeApp).container
@@ -27,7 +31,7 @@ class MainActivity : ComponentActivity() {
                 val vm: AppVM = viewModel(factory = Factory(container))
                 val n = remember(nav) {
                     Nav(index = { nav.navigate("index/${it.name}") }, stock = { nav.navigate("stock/${Uri.encode(it)}") }, chain = { nav.navigate("chain/${it.name}") },
-                        futures = { nav.navigate("futures/${it.name}") }, contract = { nav.navigate("contract/${Uri.encode(it)}") }, account = { nav.navigate("account") }, back = { nav.popBackStack() }, fyersLogin = { nav.navigate("fyers_login") })
+                        futures = { nav.navigate("futures/${it.name}") }, contract = { nav.navigate("contract/${Uri.encode(it)}") }, account = { nav.navigate("account") }, back = { nav.popBackStack() }, fyersLogin = { nav.navigate("fyers_login") }, upstoxLogin = { nav.navigate("upstox_login") })
                 }
                 val sym = navArgument("s") { type = NavType.StringType }; val und = navArgument("u") { type = NavType.StringType }
                 NavHost(nav, startDestination = "main") {
@@ -39,6 +43,7 @@ class MainActivity : ComponentActivity() {
                     composable("contract/{s}", listOf(sym)) { ContractScreen(vm, it.arguments!!.getString("s")!!, n) }
                     composable("account") { AccountScreen(vm, n) }
                     composable("fyers_login") { FyersLoginScreen(vm, n) }
+                    composable("upstox_login") { UpstoxLoginScreen(vm, n) }
                 }
             }
         }

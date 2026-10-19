@@ -34,7 +34,7 @@ import java.math.BigDecimal
 sealed interface UiState<out T> {
     data object Loading : UiState<Nothing>
     data class Success<T>(val data: T) : UiState<T>
-    data class Error(val message: String, val offline: Boolean = false) : UiState<Nothing>
+    data class Error(val message: String, val offline: Boolean = false, val title: String? = null) : UiState<Nothing>
 }
 
 @Composable
@@ -67,7 +67,7 @@ fun CenterMessage(title: String, body: String? = null, action: (() -> Unit)? = n
 @Composable
 fun <T> StateHost(state: UiState<T>, onRetry: (() -> Unit)? = null, content: @Composable (T) -> Unit) = when (state) {
     UiState.Loading -> Loading()
-    is UiState.Error -> CenterMessage(if (state.offline) "You're offline" else "Something went wrong", state.message, onRetry)
+    is UiState.Error -> CenterMessage(state.title ?: if (state.offline) "You're offline" else "Something went wrong", state.message, onRetry)
     is UiState.Success -> content(state.data)
 }
 

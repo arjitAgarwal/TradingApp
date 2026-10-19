@@ -20,7 +20,8 @@ import java.time.LocalDate
 
 fun Throwable.toUi(): UiState.Error {
     val k = (this as? ProviderException)?.kind
-    return UiState.Error(message ?: "Unknown error", offline = k == ProviderException.Kind.NETWORK)
+    return UiState.Error(message ?: "Unknown error", offline = k == ProviderException.Kind.NETWORK,
+        title = if (k == ProviderException.Kind.RATE_LIMIT) "FYERS request limit reached" else null)
 }
 
 /** Activity-scoped: wallet, orders, positions, quotes, settings. Screens read these; none of them talk to a broker. */
@@ -36,11 +37,16 @@ class AppVM(private val c: AppContainer) : ViewModel() {
     val valuation: StateFlow<PortfolioValuation?> = combine(account, quotes, c.hub.provider) { a, q, _ ->
         a?.let { Portfolio.value(it, c.trading.instrumentsSnapshot()) { id -> q[id]?.ltp } }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
-    val fyersAuth: StateFlow<com.papertrade.app.data.repo.FyersAuthState> = c.fyersAuth.state
+    val fyersAuth: StateFlow<com.papertrade.app.data.repo.LoginState> = c.fyersAuth.state
     fun fyersSetUp() = c.fyersAuth.isSetUp()
     fun fyersLoginUrl() = c.fyersAuth.loginUrl()
     fun fyersRedirectUri() = c.fyersAuth.redirectUri()
     fun fyersLoginValidUntil() = c.fyersAuth.loginValidUntil()
+    val upstoxAuth: StateFlow<com.papertrade.app.data.repo.LoginState> = c.upstoxAuth.state
+    fun upstoxSetUp() = c.upstoxAuth.isSetUp()
+    fun upstoxLoginUrl() = c.upstoxAuth.loginUrl()
+    fun upstoxRedirectUri() = c.upstoxAuth.redirectUri()
+    fun upstoxLoginValidUntil() = c.upstoxAuth.loginValidUntil()
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
 
     fun register(i: InstrumentInfo) { c.contracts[i.symbol] = i; viewModelScope.launch { c.trading.registerInstrument(i) } }
@@ -71,6 +77,13 @@ class AppVM(private val c: AppContainer) : ViewModel() {
     fun completeFyersLogin(authCode: String, pin: String, onDone: (Result<Unit>) -> Unit) = viewModelScope.launch {
         val r = c.fyersAuth.completeLogin(authCode, pin)
         if (r.isSuccess) messages.tryEmit("Logged in to FYERS. It will renew itself daily.")
+        onDone(r)
+    }
+    fun setupUpstox(apiKey: String, secret: String, redirectUri: String) { c.upstoxAuth.setup(apiKey, secret, redirectUri); messages.tryEmit("Upstox app details saved on this device (encrypted)") }
+    fun logoutUpstox() { c.upstoxAuth.logout(); messages.tryEmit("Logged out of Upstox") }
+    fun completeUpstoxLogin(code: String, onDone: (Result<Unit>) -> Unit) = viewModelScope.launch {
+        val r = c.upstoxAuth.completeLogin(code)
+        if (r.isSuccess) messages.tryEmit("Logged in to Upstox until 3:30 AM tomorrow.")
         onDone(r)
     }
     fun reset() = viewModelScope.launch { c.trading.resetSimulation(); messages.tryEmit("Simulation reset to ₹10,00,000") }
@@ -112,6 +125,7 @@ class ChainVM(private val c: AppContainer, private val u: Underlying) : ViewMode
         job?.cancel()
         job = viewModelScope.launch {
             while (true) {
+                c.hub.foreground.first { it } // no refreshes while the app is in the background
                 c.hub.provider.value.optionChain(u, expiry).fold({ ch ->
                     ch.rows.forEach { r -> listOfNotNull(r.call, r.put).forEach { s -> s.info?.let { c.contracts[s.symbol] = it }; c.hub.seed(s.quote) } }
                     expiry = ch.selectedExpiry
@@ -120,7 +134,9 @@ class ChainVM(private val c: AppContainer, private val u: Underlying) : ViewMode
                     val k = (e as? ProviderException)?.kind
                     ui.update { it.copy(error = e.message, loading = false, offline = k == ProviderException.Kind.NETWORK) }
                 })
-                delay(5_000) // 1 REST call / 5 s keeps us well inside provider rate limits
+                // Market closed: the loaded chain won't change, so stop instead of re-reading it. Live data only.
+                if (ui.value.chain != null && ui.value.chain?.source != com.papertrade.core.QuoteSource.DEMO && !com.papertrade.core.MarketHours.isLikelyOpen(Instant.now())) break
+                delay(15_000) // 1 request / 15 s = ~480 per 2-hour session, inside FYERS's free 5,000/day
             }
         }
     }

@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.papertrade.app.data.market.DataMode
+import com.papertrade.app.data.market.LiveSource
 import com.papertrade.core.ChargeModel
 import com.papertrade.core.ExecutionConfig
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +24,7 @@ data class AppSettings(
     val slippageBps: Int = 0,
     val chargesEnabled: Boolean = true,
     val partialFillCap: Int = 0, // 0 = off
+    val liveSource: LiveSource = LiveSource.FYERS,
 ) {
     fun toExecutionConfig() = ExecutionConfig(
         maxQuoteAge = Duration.ofSeconds(maxQuoteAgeSec.toLong()),
@@ -35,11 +37,13 @@ data class AppSettings(
 class SettingsStore(private val context: Context) {
     private val MODE = stringPreferencesKey("data_mode"); private val AGE = intPreferencesKey("quote_age")
     private val SLIP = intPreferencesKey("slip_bps"); private val CHG = booleanPreferencesKey("charges"); private val PART = intPreferencesKey("partial_cap")
+    private val SOURCE = stringPreferencesKey("live_source")
     val settings: Flow<AppSettings> = context.dataStore.data.map { p: Preferences ->
         val d = AppSettings()
-        AppSettings(p[MODE]?.let { runCatching { DataMode.valueOf(it) }.getOrNull() } ?: d.dataMode, p[AGE] ?: d.maxQuoteAgeSec, p[SLIP] ?: d.slippageBps, p[CHG] ?: d.chargesEnabled, p[PART] ?: d.partialFillCap)
+        AppSettings(p[MODE]?.let { runCatching { DataMode.valueOf(it) }.getOrNull() } ?: d.dataMode, p[AGE] ?: d.maxQuoteAgeSec, p[SLIP] ?: d.slippageBps, p[CHG] ?: d.chargesEnabled, p[PART] ?: d.partialFillCap,
+            p[SOURCE]?.let { runCatching { LiveSource.valueOf(it) }.getOrNull() } ?: d.liveSource)
     }
     suspend fun update(s: AppSettings) = context.dataStore.edit { p ->
-        p[MODE] = s.dataMode.name; p[AGE] = s.maxQuoteAgeSec; p[SLIP] = s.slippageBps; p[CHG] = s.chargesEnabled; p[PART] = s.partialFillCap
+        p[MODE] = s.dataMode.name; p[AGE] = s.maxQuoteAgeSec; p[SLIP] = s.slippageBps; p[CHG] = s.chargesEnabled; p[PART] = s.partialFillCap; p[SOURCE] = s.liveSource.name
     }
 }

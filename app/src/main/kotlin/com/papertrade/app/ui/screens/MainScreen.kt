@@ -33,12 +33,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.papertrade.app.data.market.DataMode
+import com.papertrade.app.data.market.LiveSource
 import com.papertrade.app.data.market.FeedState
 import com.papertrade.app.data.market.MarketQuote
 import com.papertrade.app.data.market.Underlying
-import com.papertrade.app.data.repo.FyersAuthState
+import com.papertrade.app.data.db.WatchlistItemEntity
+import com.papertrade.app.data.repo.LoginState
 import com.papertrade.app.ui.*
 import com.papertrade.app.ui.components.*
+import com.papertrade.app.ui.theme.Gain
+import com.papertrade.app.ui.theme.Loss
+import com.papertrade.core.Side
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.ui.graphics.Color
 
 /** One thin, sideways-scrolling line: "NIFTY 50  24,913.50 [+148.80]   SENSEX …". Tap an index to open it. */
 @Composable
@@ -102,7 +110,9 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     }
     val selected = tab.coerceIn(0, fixedTabs.size + lists.size - 1) // never index past the tabs while a deletion settles
     val settings by vm.settings.collectAsState(); val feed by vm.feed.collectAsState()
-    val auth by vm.fyersAuth.collectAsState()
+    val fyersAuth by vm.fyersAuth.collectAsState(); val upstoxAuth by vm.upstoxAuth.collectAsState()
+    val upstox = settings.liveSource == LiveSource.UPSTOX
+    val auth = if (upstox) upstoxAuth else fyersAuth; val broker = settings.liveSource.displayName
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
@@ -110,8 +120,8 @@ fun MainScreen(vm: AppVM, nav: Nav) {
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
             AppHeader(onSearch = { tab = 0 }, onProfile = nav.account, paper = settings.dataMode == DataMode.LIVE_PROVIDER)
             MarketTicker(vm, nav.index)
-            if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != FyersAuthState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth == FyersAuthState.NEEDS_LOGIN) nav.fyersLogin() else nav.account() }.testTag("fyers_login_banner")) {
-                Text(if (auth == FyersAuthState.NEEDS_LOGIN) "FYERS login needed for live prices. Tap here to log in." else "FYERS is not set up yet. Tap to open settings.",
+            if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
+                Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
                     color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
             }
             if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
@@ -141,6 +151,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
 fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watchlist, canDelete: Boolean) {
     val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
     var renaming by remember { mutableStateOf(false) }; var confirmDelete by remember { mutableStateOf(false) }
+    var action by remember { mutableStateOf<WatchlistItemEntity?>(null) }
     DisposableEffect(list.id, list.items.size) { vm.subscribe("watchlist", list.items.map { it.symbol }.toSet()); onDispose { vm.unsubscribe("watchlist") } }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -150,18 +161,56 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
         }
         if (list.items.isEmpty()) EmptyState(Icons.Default.StarBorder, "This watchlist is empty", "Search in Explore and tap ☆ to add a stock.")
         else LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
-            items(list.items, key = { it.symbol }) { item ->
+            items(list.items, key = { it.symbol }) { item -> Box(Modifier.testTag("wl_item_${item.symbol}")) {
                 StockRow(item.symbol, item.name, quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()), true,
-                    onClick = { if (item.symbol.endsWith("-EQ")) nav.stock(item.symbol) else nav.contract(item.symbol) },
-                    onToggle = { vm.removeFromWatchlist(list.id, item.symbol) })
+                    onClick = { action = item },
+                    onToggle = { vm.removeFromWatchlist(list.id, item.symbol) }) }
             }
         }
     }
+    action?.let { item -> QuickActionSheet(vm, item.symbol, quotes[item.symbol], { action = null },
+        onOpen = { action = null; if (item.symbol.endsWith("-EQ")) nav.stock(item.symbol) else nav.contract(item.symbol) }) }
     if (renaming) NameDialog("Rename watchlist", list.name) { name -> renaming = false; name?.let { vm.renameWatchlist(list.id, it) } }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete \"${list.name}\"?") },
         text = { Text("The watchlist and its ${list.items.size} items will be removed.") },
         confirmButton = { TextButton({ confirmDelete = false; vm.deleteWatchlist(list.id) }) { Text("Delete") } },
         dismissButton = { TextButton({ confirmDelete = false }) { Text("Cancel") } })
+}
+
+/** Groww-style sheet shown on tapping a watchlist row: name card (tap to open full details), Set alert, Sell / Buy. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose: () -> Unit, onOpen: () -> Unit) {
+    var info by remember(symbol) { mutableStateOf(vm.info(symbol)) }; var ticket by remember { mutableStateOf<Side?>(null) }
+    LaunchedEffect(symbol) { if (info == null && symbol.endsWith("-EQ")) vm.equityInfo(symbol).onSuccess { info = it; vm.register(it) } }
+    ticket?.let { s -> info?.let { OrderTicket(it, q, vm, s, onClose) }; return }
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).testTag("quick_actions")) {
+            OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag("quick_open"), shape = RoundedCornerShape(16.dp)) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(Fmt.label(symbol, info), fontSize = 17.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f, fill = false))
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Open details")
+                    Spacer(Modifier.width(12.dp))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(Fmt.rupee(q?.ltp), fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", fontSize = 13.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant))
+                    }
+                }
+            }
+            // Alerts aren't built yet; the row is here so the sheet matches the target layout.
+            Row(Modifier.fillMaxWidth().clickable { vm.messages.tryEmit("Price alerts are coming soon") }.padding(vertical = 16.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.NotificationsNone, null); Spacer(Modifier.width(16.dp)); Text("Set alert", fontSize = 16.sp)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            if (info == null) Text("Contract details unavailable, so this can't be traded right now.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Button({ ticket = Side.SELL }, Modifier.weight(1f).height(52.dp).testTag("btn_sell"), enabled = info != null, shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Loss, contentColor = Color.White)) { Text("Sell", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+                Button({ ticket = Side.BUY }, Modifier.weight(1f).height(52.dp).testTag("btn_buy"), enabled = info != null, shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gain, contentColor = Color.White)) { Text("Buy", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+            }
+        }
+    }
 }
 
 /** Text prompt for a watchlist name; calls back with the name, or null if cancelled. */
@@ -196,7 +245,7 @@ private fun feedMessage(s: FeedState, m: String?) = when (s) {
 }
 
 class Nav(val index: (Underlying) -> Unit, val stock: (String) -> Unit, val chain: (Underlying) -> Unit, val futures: (Underlying) -> Unit,
-          val contract: (String) -> Unit, val account: () -> Unit, val back: () -> Unit, val fyersLogin: () -> Unit = {})
+          val contract: (String) -> Unit, val account: () -> Unit, val back: () -> Unit, val fyersLogin: () -> Unit = {}, val upstoxLogin: () -> Unit = {})
 
 @Composable
 fun ExploreScreen(vm: AppVM, nav: Nav) {

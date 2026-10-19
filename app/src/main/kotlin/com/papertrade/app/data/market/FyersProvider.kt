@@ -87,12 +87,19 @@ class FyersProvider(
             status.value = FeedStatus(FeedState.NOT_CONFIGURED, "FYERS login needed (Account → Market data)")
             throw ProviderException("FYERS credentials not configured", ProviderException.Kind.NOT_CONFIGURED)
         }
+        // While FYERS has refused us for rate, every further call would only count against the quota again: fail locally.
+        blocked?.let { (until, msg) -> if (clock() < until) throw ProviderException(msg, ProviderException.Kind.RATE_LIMIT).also { status.value = FeedStatus(FeedState.ERROR, msg, status.value.lastSuccess) } }
         limiter.acquire()
         val req = Request.Builder().url(url).header("Authorization", "$appId:$token").build()
         try {
             http.newCall(req).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
-                if (resp.code == 429) throw ProviderException("Rate limited by FYERS", ProviderException.Kind.RATE_LIMIT)
+                debugLog(url, resp.code, body)
+                val errCode = runCatching { json.parseToJsonElement(body).jsonObject["code"].str()?.toIntOrNull() }.getOrNull()
+                if (resp.code == 429 || errCode == -429 || errCode == -360) {
+                    val fyersMsg = runCatching { json.parseToJsonElement(body).jsonObject["message"].str() }.getOrNull().orEmpty()
+                    throw rateLimited(daily = errCode == -360 || fyersMsg.contains("/day"))
+                }
                 if (resp.code == 401 || resp.code == 403) {
                     val detail = runCatching { json.parseToJsonElement(body).jsonObject["message"].str() }.getOrNull() ?: body.take(200).ifBlank { "no message" }
                     throw ProviderException("FYERS rejected the login (HTTP ${resp.code}: $detail). Log in again from Account → Market data", ProviderException.Kind.AUTH)
@@ -103,7 +110,6 @@ class FyersProvider(
                     val msg = obj["message"].str() ?: "FYERS error"
                     when (code) {
                         -8, -15, -16, -17 -> throw ProviderException("FYERS token invalid/expired: $msg", ProviderException.Kind.AUTH)
-                        -429 -> throw ProviderException("Rate limited by FYERS: $msg", ProviderException.Kind.RATE_LIMIT)
                         else -> throw ProviderException("FYERS: $msg (code $code)", ProviderException.Kind.OTHER)
                     }
                 }
@@ -118,6 +124,20 @@ class FyersProvider(
             throw e
         }
     }
+
+    /** Set when FYERS refuses for rate: (retry-after time, user-facing reason). */
+    @Volatile private var blocked: Pair<Instant, String>? = null
+    private fun rateLimited(daily: Boolean): ProviderException {
+        val now = clock()
+        blocked = if (daily) now.atZone(MarketHours.IST).toLocalDate().plusDays(1).atStartOfDay(MarketHours.IST).toInstant() to
+            "FYERS daily limit reached (5,000 requests/day on the free Standard plan). Live data resumes tomorrow."
+        else now.plusSeconds(60) to "FYERS per-minute request limit hit. Pausing live data for 1 minute."
+        return ProviderException(blocked!!.second, ProviderException.Kind.RATE_LIMIT)
+    }
+
+    private val debug = HttpDebugLog("FyersHttp")
+    private fun debugLog(url: String, code: Int, body: String) =
+        debug.log(url.removePrefix(dataBase).substringBefore('?'), code, body, code != 200 || body.contains("\"s\":\"error\""))
 
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
 
@@ -210,11 +230,12 @@ class FyersProvider(
         // Note: the chain's `timestamp` param selects an expiry by epoch; the nearest expiry is returned when omitted.
         var url = "$dataBase/options-chain-v3?symbol=${enc(underlying.indexSymbol)}&strikecount=${strikesEachSide.coerceIn(1, 50)}"
         if (expiry != null) {
-            val first = getJson(url)
-            val epoch = expiryEpoch(first, expiry)
+            // Epochs are remembered from earlier responses, so a refresh costs one request instead of two.
+            val epoch = expiryEpochs[underlying]?.get(expiry) ?: run { val first = getJson(url); rememberEpochs(underlying, first["data"] as? JsonObject); expiryEpochs[underlying]?.get(expiry) }
             if (epoch != null) url += "&timestamp=$epoch"
         }
         val data = getJson(url)["data"] as? JsonObject ?: throw ProviderException("Option chain not available for ${underlying.displayName}", ProviderException.Kind.UNSUPPORTED)
+        rememberEpochs(underlying, data)
         val expiries = (data["expiryData"] as? JsonArray).orEmpty().mapNotNull { runCatching { LocalDate.parse(it.jsonObject["date"].str(), dateFmt) }.getOrNull() }
         val chain = (data["optionsChain"] as? JsonArray).orEmpty().map { it.jsonObject }
         val now = clock(); val src = sourceNow(now)
@@ -237,9 +258,14 @@ class FyersProvider(
         OptionChain(underlying, under, expiries, selected, rows.map { OptionRow(it.key, it.value.first, it.value.second) }, now, src)
     }
 
-    private fun expiryEpoch(data: JsonObject, target: LocalDate): String? =
-        ((data["data"] as? JsonObject)?.get("expiryData") as? JsonArray)?.map { it.jsonObject }
-            ?.firstOrNull { runCatching { LocalDate.parse(it["date"].str(), dateFmt) }.getOrNull() == target }?.get("expiry").str()
+    private val expiryEpochs = java.util.concurrent.ConcurrentHashMap<Underlying, Map<LocalDate, String>>()
+    private fun rememberEpochs(u: Underlying, data: JsonObject?) {
+        val m = (data?.get("expiryData") as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e.jsonObject; val d = runCatching { LocalDate.parse(o["date"].str(), dateFmt) }.getOrNull() ?: return@mapNotNull null
+            o["expiry"].str()?.let { d to it }
+        }.toMap()
+        if (m.isNotEmpty()) expiryEpochs[u] = m
+    }
 
     override suspend fun candles(symbol: String, interval: CandleInterval) = runCatching {
         val to = clock().epochSecond; val from = to - interval.lookbackDays * 86400
@@ -252,20 +278,7 @@ class FyersProvider(
         }
     }
 
-    override fun quoteStream(symbols: Set<String>): Flow<MarketQuote> = flow {
-        var backoff = pollIntervalMs
-        while (true) {
-            val r = quotes(symbols.toList())
-            if (r.isSuccess) { r.getOrThrow().forEach { emit(it) }; backoff = pollIntervalMs }
-            else {
-                val k = (r.exceptionOrNull() as? ProviderException)?.kind
-                if (k == ProviderException.Kind.NOT_CONFIGURED || k == ProviderException.Kind.AUTH) backoff = 30_000
-                else backoff = (backoff * 2).coerceAtMost(30_000)
-                status.value = FeedStatus(FeedState.RECONNECTING, r.exceptionOrNull()?.message, status.value.lastSuccess)
-            }
-            delay(backoff)
-        }
-    }
+    override fun quoteStream(symbols: Set<String>): Flow<MarketQuote> = pollingQuoteStream(symbols, pollIntervalMs, clock, status, ::quotes)
 }
 
 /** Keeps request rate under provider limits (blocks rather than risk an account block). */

@@ -12,6 +12,8 @@ import java.time.LocalDate
 
 /** Provider-independent market-data contracts. UI and the paper engine depend ONLY on these. */
 enum class DataMode { LIVE_PROVIDER, DEMO }
+/** Which broker supplies real prices when [DataMode.LIVE_PROVIDER] is on. */
+enum class LiveSource(val displayName: String) { FYERS("FYERS"), UPSTOX("Upstox") }
 
 enum class Underlying(val displayName: String, val indexSymbol: String) {
     NIFTY("NIFTY 50", "NSE:NIFTY50-INDEX"),
