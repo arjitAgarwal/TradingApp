@@ -13,11 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.papertrade.app.ui.AppVM
 
@@ -50,12 +48,12 @@ fun FyersLoginScreen(vm: AppVM, nav: Nav) {
                 -1 -> Text("FYERS isn't set up on this phone yet. Ask the person who installed the app to fill in the FYERS app details in Account → Market data.",
                     Modifier.padding(16.dp))
                 0 -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Enter your FYERS PIN", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-                    Text("The same 4-digit PIN you use in the FYERS app. It's stored encrypted on this phone so the app can stay logged in each day without asking you again.", fontSize = 13.sp)
+                    Text("Enter your FYERS PIN", style = MaterialTheme.typography.titleLarge)
+                    Text("The same 4-digit PIN you use in the FYERS app. It's stored encrypted on this phone so the app can stay logged in each day without asking you again.", style = MaterialTheme.typography.bodyMedium)
                     OutlinedTextField(pin, { if (it.length <= 4 && it.all(Char::isDigit)) pin = it }, label = { Text("PIN") }, singleLine = true,
                         visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         modifier = Modifier.fillMaxWidth().testTag("fyers_pin"))
-                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
                     Button({ error = null; step = 1 }, enabled = pin.length == 4, modifier = Modifier.fillMaxWidth()) { Text("Continue to FYERS login") }
                 }
                 1 -> LoginWebView(vm.fyersLoginUrl(), ::handleRedirect)
@@ -91,7 +89,7 @@ fun UpstoxLoginScreen(vm: AppVM, nav: Nav) {
             when (step) {
                 -1 -> Text("Upstox isn't set up on this phone yet. Fill in the Upstox app details in Account → Market data.", Modifier.padding(16.dp))
                 0 -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
                     Button({ error = null; step = 1 }, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
                 }
                 1 -> LoginWebView(vm.upstoxLoginUrl(), ::handleRedirect)

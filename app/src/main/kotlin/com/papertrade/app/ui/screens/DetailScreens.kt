@@ -12,9 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.papertrade.app.AppContainer
 import com.papertrade.app.data.market.*
@@ -30,10 +28,10 @@ import java.math.BigDecimal
 fun QuoteHeader(q: MarketQuote?, vm: AppVM) {
     val now by vm.now.collectAsState()
     Column {
-        Text(Fmt.inr(q?.ltp), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        Text(Fmt.inr(q?.ltp), style = MaterialTheme.typography.headlineLarge)
         Text("${Fmt.signed(q?.change)}  (${Fmt.pct(q?.changePct)})", color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface))
         FreshnessChip(freshnessOf(q, now, vm.maxAgeSec()), q?.let { Fmt.time(it.timestamp) })
-        if (q?.source == com.papertrade.core.QuoteSource.CACHED) Text("Previous / cached quote — not a live price. Market orders are disabled.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+        if (q?.source == com.papertrade.core.QuoteSource.CACHED) Text("Previous / cached quote — not a live price. Market orders are disabled.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
 }
 
@@ -114,25 +112,25 @@ private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: N
         Column(Modifier.padding(pad)) {
             if (chain == null) { if (ui.error != null) CenterMessage(if (ui.offline) "You're offline" else "Option chain unavailable", ui.error, cv::start) else Loading(); return@Column }
             Column(Modifier.padding(horizontal = 12.dp)) {
-                Text("${u.displayName}  ${Fmt.inr(chain.underlyingLtp)}", fontWeight = FontWeight.Bold)
+                Text("${u.displayName}  ${Fmt.inr(chain.underlyingLtp)}", style = MaterialTheme.typography.titleMedium)
                 val f = if (chain.source == com.papertrade.core.QuoteSource.LIVE) freshnessOf(chain.rows.firstNotNullOfOrNull { it.call?.quote ?: it.put?.quote }, now, vm.maxAgeSec()) else when (chain.source) {
                     com.papertrade.core.QuoteSource.DEMO -> Freshness.DEMO; else -> Freshness.CACHED }
                 FreshnessChip(f, Fmt.time(chain.asOf))
-                ui.error?.let { Text("Update failed: $it (showing last data)", color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                ui.error?.let { Text("Update failed: $it (showing last data)", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     chain.expiries.forEach { e -> FilterChip(e == chain.selectedExpiry, { cv.selectExpiry(e) }, { Text(e.toString()) }) } }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-                Text("Call LTP (%)", Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                Text("Strike", Modifier.width(80.dp), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                Text("Put LTP (%)", Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                Text("Call LTP (%)", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                Text("Strike", Modifier.width(80.dp), style = MaterialTheme.typography.labelMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text("Put LTP (%)", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, textAlign = androidx.compose.ui.text.style.TextAlign.End)
             }
             val atm = chain.underlyingLtp?.let { ltp -> chain.rows.minByOrNull { (it.strike - ltp).abs() }?.strike }
             LazyColumn(Modifier.testTag("chain_table")) {
                 items(chain.rows, key = { it.strike.toPlainString() }) { r ->
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Cell(r.call, Modifier.weight(1f), r.call?.symbol in inList, Alignment.Start, add)
-                        Text(Fmt.inr(r.strike, 0), Modifier.width(80.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontWeight = if (r.strike == atm) FontWeight.ExtraBold else FontWeight.Medium,
+                        Text(Fmt.inr(r.strike, 0), Modifier.width(80.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = if (r.strike == atm) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge,
                             color = if (r.strike == atm) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                         Cell(r.put, Modifier.weight(1f), r.put?.symbol in inList, Alignment.End, add)
                     }
@@ -146,8 +144,8 @@ private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: N
 @Composable
 private fun Cell(s: OptionSide?, m: Modifier, added: Boolean, align: Alignment.Horizontal, onAdd: (OptionSide) -> Unit) {
     Column(m.clickable(enabled = s != null) { s?.let(onAdd) }.then(s?.let { Modifier.testTag("chain_cell_${it.symbol}") } ?: Modifier).padding(vertical = 6.dp), horizontalAlignment = align) {
-        Text((if (added) "★ " else "") + Fmt.inr(s?.quote?.ltp), fontWeight = FontWeight.SemiBold)
-        Text(Fmt.pct(s?.quote?.changePct), fontSize = 11.sp, color = Fmt.color(s?.quote?.changePct, MaterialTheme.colorScheme.onSurface))
+        Text((if (added) "★ " else "") + Fmt.inr(s?.quote?.ltp), style = MaterialTheme.typography.labelLarge)
+        Text(Fmt.pct(s?.quote?.changePct), style = MaterialTheme.typography.labelSmall, color = Fmt.color(s?.quote?.changePct, MaterialTheme.colorScheme.onSurface))
     }
 }
 
@@ -155,13 +153,13 @@ private fun Cell(s: OptionSide?, m: Modifier, added: Boolean, align: Alignment.H
 fun FuturesScreen(c: AppContainer, vm: AppVM, u: Underlying, nav: Nav) {
     val fv = scoped(c, "futures", u.name, FuturesVM::class.java); val state by fv.state.collectAsState(); val quotes by vm.quotes.collectAsState()
     DetailScaffold("${u.displayName} futures", nav) {
-        Text("Futures prices differ from the spot index (basis).", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Futures prices differ from the spot index (basis).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(Modifier.fillMaxWidth().heightIn(min = 200.dp)) { StateHost(state, fv::load) { list ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { list.forEach { f -> val q = quotes[f.info.symbol] ?: f.quote
                 Card(Modifier.fillMaxWidth().clickable { nav.contract(f.info.symbol) }.testTag("fut_${f.info.symbol}")) { Column(Modifier.padding(12.dp)) {
-                    Text("${u.displayName} FUT  ${f.info.expiry}", fontWeight = FontWeight.SemiBold)
-                    Text(Fmt.inr(q?.ltp), fontWeight = FontWeight.Bold); Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface))
-                    Text("Lot size ${f.info.lotSize}", fontSize = 12.sp) } } } }
+                    Text("${u.displayName} FUT  ${f.info.expiry}", style = MaterialTheme.typography.titleSmall)
+                    Text(Fmt.inr(q?.ltp), style = MaterialTheme.typography.titleMedium); Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", style = MaterialTheme.typography.bodyMedium, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface))
+                    Text("Lot size ${f.info.lotSize}", style = MaterialTheme.typography.bodySmall) } } } }
         } }
     }
 }

@@ -18,10 +18,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.papertrade.app.data.market.Candle
 import com.papertrade.app.ui.Fmt
 import com.papertrade.app.ui.Freshness
@@ -39,7 +37,7 @@ sealed interface UiState<out T> {
 
 @Composable
 fun DemoBanner() = Text(
-    "DEMO DATA — synthetic prices, NOT real market data", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+    "DEMO DATA — synthetic prices, NOT real market data", color = Color.White, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center,
     modifier = Modifier.fillMaxWidth().background(Demo).padding(vertical = 4.dp).testTag("demo_banner"))
 
 @Composable
@@ -49,15 +47,15 @@ fun FreshnessChip(f: Freshness, time: String?) {
         Freshness.CACHED -> "PREVIOUS / CACHED" to Warn; Freshness.DEMO -> "DEMO" to Demo; Freshness.NONE -> "NO DATA" to Loss
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
-        if (time != null) Text("  $time", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, color = color, style = MaterialTheme.typography.labelSmall, modifier = Modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+        if (time != null) Text("  $time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
 fun CenterMessage(title: String, body: String? = null, action: (() -> Unit)? = null, actionLabel: String = "Retry") =
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         if (body != null) Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
         if (action != null) Button(onClick = action, modifier = Modifier.padding(top = 12.dp)) { Text(actionLabel) }
     }
@@ -73,7 +71,7 @@ fun <T> StateHost(state: UiState<T>, onRetry: (() -> Unit)? = null, content: @Co
 
 @Composable
 fun StatRow(label: String, value: String, valueColor: Color = Color.Unspecified) = Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-    Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(value, color = valueColor, fontWeight = FontWeight.Medium)
+    Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium); Text(value, color = valueColor, style = MaterialTheme.typography.labelLarge)
 }
 
 /** Line chart with draggable/tappable price marker. Candles close prices only; no invented points. */
@@ -86,7 +84,7 @@ fun PriceChart(candles: List<Candle>, modifier: Modifier = Modifier) {
     val up = closes.last() >= closes.first(); val line = if (up) Gain else Loss
     Column(modifier) {
         val m = marker
-        Text(if (m != null) "${Fmt.inr(candles[m].close)}  ·  ${Fmt.time(candles[m].time)}" else "Drag on the chart to inspect a price", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if (m != null) "${Fmt.inr(candles[m].close)}  ·  ${Fmt.time(candles[m].time)}" else "Drag on the chart to inspect a price", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Canvas(Modifier.fillMaxWidth().height(200.dp).pointerInput(candles) {
             detectDragGestures(onDragStart = { o -> marker = ((o.x / size.width) * (candles.size - 1)).toInt().coerceIn(0, candles.size - 1) },
                 onDrag = { c, _ -> marker = ((c.position.x / size.width) * (candles.size - 1)).toInt().coerceIn(0, candles.size - 1) },
@@ -107,6 +105,6 @@ fun EmptyState(icon: ImageVector, title: String, body: String? = null) =
         Box(Modifier.size(120.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), CircleShape), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(56.dp))
         }
-        Text(title, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 20.dp))
-        if (body != null) Text(body, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 20.dp))
+        if (body != null) Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
     }

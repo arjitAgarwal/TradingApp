@@ -20,9 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.papertrade.app.data.market.DataMode
 import com.papertrade.app.data.market.LiveSource
 import com.papertrade.app.data.repo.AppSettings
@@ -60,7 +58,7 @@ fun OrdersScreen(vm: AppVM) {
             if (traded.isNotEmpty()) { item { SectionHeader("Executed (${traded.size})") }; items(traded, key = { it.id }) { o -> OrderRow(vm, o) { sel = o } } }
             if (all.size > shown.size) item { TextButton({ showAll = true }, Modifier.padding(horizontal = 8.dp).testTag("all_orders")) { Text("All orders") } }
         }
-        item { Text("Simulated orders only", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+        item { Text("Simulated orders only", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
     }
     sel?.let { o0 -> val o = acc?.orders?.get(o0.id) ?: o0; val fills = acc?.fills?.filter { it.orderId == o.id } ?: emptyList()
         AlertDialog(onDismissRequest = { sel = null }, title = { Text("Order ${o.id}") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -76,7 +74,7 @@ fun OrdersScreen(vm: AppVM) {
 @Composable
 private fun SectionHeader(title: String, trailing: @Composable () -> Unit = {}) =
     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)); trailing()
+        Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f)); trailing()
     }
 
 /** Flat row: name and "BUY · 65 qty · 18 Oct, 10:42" on the left; price and status on the right. */
@@ -90,16 +88,16 @@ private fun OrderRow(vm: AppVM, o: Order, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("order_${o.id}")) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(name(vm, o.instrumentId), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text(name(vm, o.instrumentId), style = MaterialTheme.typography.titleSmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(o.side.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (o.side == Side.BUY) Gain else Loss)
+                    Text(o.side.name, style = MaterialTheme.typography.labelMedium, color = if (o.side == Side.BUY) Gain else Loss)
                     Text(" · ${if (o.filledQuantity > 0) o.filledQuantity else o.quantity} qty · ${Fmt.time(o.executedAt ?: o.createdAt).removeSuffix(" IST")}",
-                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(Fmt.rupee(o.avgFillPrice ?: o.limitPrice), fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                Text(status, fontSize = 12.sp, color = statusColor)
+                Text(Fmt.rupee(o.avgFillPrice ?: o.limitPrice), style = MaterialTheme.typography.labelLarge)
+                Text(status, style = MaterialTheme.typography.bodySmall, color = statusColor)
             }
         }
         HorizontalDivider(Modifier.padding(horizontal = 16.dp))
@@ -114,11 +112,11 @@ fun PositionsScreen(vm: AppVM) {
     Column(Modifier.fillMaxSize()) {
         Card(Modifier.fillMaxWidth().padding(12.dp)) { Column(Modifier.padding(12.dp)) {
             Text("Total P&L (positions)"); val total = rows.fold(BigDecimal.ZERO) { a, r -> a + r.netPnl }
-            Text(Fmt.rupee(total), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.testTag("positions_total")) } }
+            Text(Fmt.rupee(total), style = MaterialTheme.typography.headlineMedium, color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.testTag("positions_total")) } }
         LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(rows, key = { it.instrumentId }) { r -> val p = acc!!.positions.getValue(r.instrumentId); val q = vm.quotes.collectAsState().value[p.instrumentId]
                 Card(Modifier.fillMaxWidth().testTag("pos_${p.instrumentId}")) { Column(Modifier.padding(12.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(name(vm, p.instrumentId), fontWeight = FontWeight.SemiBold); Text(if (p.isOpen) (if (p.quantity > 0) "LONG" else "SHORT") else "CLOSED") }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(name(vm, p.instrumentId), style = MaterialTheme.typography.titleSmall); Text(if (p.isOpen) (if (p.quantity > 0) "LONG" else "SHORT") else "CLOSED") }
                     StatRow("Quantity (lots)", p.quantity.toString()); StatRow("Avg entry", Fmt.inr(p.avgPrice)); StatRow("Current", Fmt.inr(q?.ltp))
                     StatRow("Realized", Fmt.signed(r.realizedGross), Fmt.color(r.realizedGross, MaterialTheme.colorScheme.onSurface)); StatRow("Unrealized", Fmt.signed(r.unrealized), Fmt.color(r.unrealized, MaterialTheme.colorScheme.onSurface))
                     StatRow("Charges", Fmt.rupee(r.charges)); StatRow("Net P&L", Fmt.signed(r.netPnl), Fmt.color(r.netPnl, MaterialTheme.colorScheme.onSurface))
@@ -140,12 +138,12 @@ fun HoldingsScreen(vm: AppVM, nav: Nav) {
             Column(Modifier.fillMaxWidth().clickable { nav.stock(p.instrumentId) }.testTag("holding_${p.instrumentId}")) {
                 Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(p.instrumentId.substringAfter(':').removeSuffix("-EQ"), fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text("${p.quantity} shares · Avg ${Fmt.rupee(p.avgPrice)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(p.instrumentId.substringAfter(':').removeSuffix("-EQ"), style = MaterialTheme.typography.titleSmall)
+                        Text("${p.quantity} shares · Avg ${Fmt.rupee(p.avgPrice)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
-                        Text("LTP ${Fmt.rupee(q?.ltp)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), style = MaterialTheme.typography.labelLarge, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
+                        Text("LTP ${Fmt.rupee(q?.ltp)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -167,13 +165,13 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
     Scaffold(topBar = { TopAppBar(title = { Text("Account & settings") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
         Column(Modifier.padding(pad).padding(12.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
-                Text("Virtual wallet (simulation only)", fontWeight = FontWeight.SemiBold)
+                Text("Virtual wallet (simulation only)", style = MaterialTheme.typography.titleMedium)
                 StatRow("Starting capital", Fmt.rupee(acc?.wallet?.startingCapital)); StatRow("Available cash", Fmt.rupee(v?.availableCash)); StatRow("Reserved margin (simulated)", Fmt.rupee(v?.reservedMargin))
                 StatRow("Realized P&L", Fmt.signed(v?.realizedGross)); StatRow("Unrealized P&L", Fmt.signed(v?.unrealized)); StatRow("Simulated charges", Fmt.rupee(v?.totalCharges))
                 StatRow("Net P&L", Fmt.signed(v?.netPnl), Fmt.color(v?.netPnl, MaterialTheme.colorScheme.onSurface)); StatRow("Total equity", Fmt.rupee(v?.equity), Color.Unspecified)
             } }
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Market data", fontWeight = FontWeight.SemiBold)
+                Text("Market data", style = MaterialTheme.typography.titleMedium)
                 // One toggle: synthetic demo prices, or real prices from FYERS or Upstox. Saved symbols work with either broker.
                 val choice = if (settings.dataMode == DataMode.DEMO) null else settings.liveSource
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -182,7 +180,7 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
                         FilterChip(choice == s, { vm.saveSettings(settings.copy(dataMode = DataMode.LIVE_PROVIDER, liveSource = s)) }, { Text(s.displayName) }, modifier = Modifier.testTag("mode_${s.name}"))
                     }
                 }
-                Text(if (choice == null) "Synthetic prices, no login needed." else "Real prices from ${choice.displayName}. Trades are still simulated.", fontSize = 12.sp)
+                Text(if (choice == null) "Synthetic prices, no login needed." else "Real prices from ${choice.displayName}. Trades are still simulated.", style = MaterialTheme.typography.bodySmall)
             } }
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 BrokerLogin("FYERS", auth, when (auth) {
@@ -203,15 +201,15 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
                     "Upstox API key", vm::setupUpstox)
             } }
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Simulation rules", fontWeight = FontWeight.SemiBold)
+                Text("Simulation rules", style = MaterialTheme.typography.titleMedium)
                 IntField("Max quote age (seconds)", settings.maxQuoteAgeSec) { vm.saveSettings(settings.copy(maxQuoteAgeSec = it.coerceIn(1, 3600))) }
                 IntField("LTP-only slippage (bps)", settings.slippageBps) { vm.saveSettings(settings.copy(slippageBps = it.coerceIn(0, 1000))) }
                 IntField("Partial-fill cap per tick (0 = off)", settings.partialFillCap) { vm.saveSettings(settings.copy(partialFillCap = it.coerceAtLeast(0))) }
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Switch(settings.chargesEnabled, { vm.saveSettings(settings.copy(chargesEnabled = it)) }); Text("  Apply illustrative charges") }
-                Text("Charge rates and margin percentages are illustrative assumptions, not official broker/exchange figures.", fontSize = 11.sp)
+                Text("Charge rates and margin percentages are illustrative assumptions, not official broker/exchange figures.", style = MaterialTheme.typography.bodySmall)
             } }
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Backup", fontWeight = FontWeight.SemiBold)
+                Text("Backup", style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton({ exportLauncher.launch("papertrade-export.json") }) { Text("Export") }; OutlinedButton({ importLauncher.launch(arrayOf("application/json", "text/plain")) }) { Text("Import") } }
                 Button({ confirmReset = true }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Reset simulation to ₹10,00,000") }
             } }
@@ -227,12 +225,12 @@ private fun BrokerLogin(broker: String, auth: LoginState, statusText: String, ta
                         setupHelp: String, keyLabel: String, onSetup: (String, String, String) -> Unit) {
     var showSetup by remember { mutableStateOf(false) }
     var key by remember { mutableStateOf("") }; var secret by remember { mutableStateOf("") }; var redirect by remember { mutableStateOf("") }
-    Text(broker, fontWeight = FontWeight.SemiBold)
-    Text(statusText, fontSize = 12.sp, modifier = Modifier.testTag("${tag}_status"))
+    Text(broker, style = MaterialTheme.typography.titleMedium)
+    Text(statusText, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("${tag}_status"))
     Row { Button(onLogin, enabled = auth != LoginState.NOT_SET_UP, modifier = Modifier.testTag("${tag}_login")) { Text("Log in to $broker") }; Spacer(Modifier.width(8.dp)); OutlinedButton(onLogout, enabled = auth == LoginState.READY) { Text("Log out") } }
     TextButton({ showSetup = !showSetup }) { Text(if (showSetup) "Hide setup" else "Setup (app owner, one time)") }
     if (showSetup) {
-        Text(setupHelp, fontSize = 12.sp)
+        Text(setupHelp, style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(key, { key = it }, label = { Text(keyLabel) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(secret, { secret = it }, label = { Text("App secret") }, singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         OutlinedTextField(redirect, { redirect = it }, label = { Text("Redirect URI") }, singleLine = true, modifier = Modifier.fillMaxWidth())

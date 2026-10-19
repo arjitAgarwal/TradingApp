@@ -45,18 +45,34 @@ private val Dark = darkColorScheme(
     error = Color(0xFFFF7A5C), errorContainer = Color(0xFF3D1A12), onErrorContainer = Color(0xFFFFD6CC),
 )
 
-/** Inter (variable font, bundled; SIL OFL, see docs/licenses/Inter-OFL.txt): the closest free match to Groww's typeface. */
+/**
+ * Inter (variable font, bundled; SIL Open Font License 1.1, see docs/licenses/Inter-OFL.txt, which allows bundling in an app).
+ * Chosen as a clean, neutral sans-serif with a similar feel to modern Indian broker apps; it is not claimed to be any app's font.
+ */
 @OptIn(ExperimentalTextApi::class)
 private fun inter(w: FontWeight) = Font(R.font.inter, w, variationSettings = FontVariation.Settings(FontVariation.weight(w.weight)))
 val Inter = FontFamily(listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold).map(::inter))
 
-// Every text style uses Inter with tabular figures, so prices line up in columns.
-private val AppType = Typography().run {
-    fun TextStyle.inter() = copy(fontFamily = Inter, fontFeatureSettings = "tnum", letterSpacing = 0.sp) // Material's default tracking looks loose with Inter
-    Typography(displayLarge.inter(), displayMedium.inter(), displaySmall.inter(), headlineLarge.inter(), headlineMedium.inter(), headlineSmall.inter(),
-        titleLarge.inter(), titleMedium.inter(), titleSmall.inter(), bodyLarge.inter(), bodyMedium.inter(), bodySmall.inter(),
-        labelLarge.inter(), labelMedium.inter(), labelSmall.inter())
-}
+private fun style(size: Int, line: Int, weight: FontWeight) =
+    // Tabular figures everywhere so prices, quantities and P&L line up; Material's default tracking looks loose with Inter.
+    TextStyle(fontFamily = Inter, fontWeight = weight, fontSize = size.sp, lineHeight = line.sp, letterSpacing = 0.sp, fontFeatureSettings = "tnum")
+
+/**
+ * The app's only type scale. Screens pick a role, never a raw size:
+ * - Bold (700), sparingly: headlineLarge = hero price on detail screens, headlineMedium = portfolio totals.
+ * - SemiBold (600): headlineSmall = app title; titleLarge = page/section headings; titleMedium = card headings and
+ *   key values; titleSmall = instrument names in rows.
+ * - Regular (400): body* = body text, labels and supporting information.
+ * - Medium (500): labelLarge = buttons and row values; labelMedium = navigation, tabs' small text and table headers;
+ *   labelSmall = tags and compact option-chain figures.
+ */
+private val AppType = Typography(
+    displayLarge = style(57, 64, FontWeight.Normal), displayMedium = style(45, 52, FontWeight.Normal), displaySmall = style(36, 44, FontWeight.Normal),
+    headlineLarge = style(30, 36, FontWeight.Bold), headlineMedium = style(24, 32, FontWeight.Bold), headlineSmall = style(20, 28, FontWeight.SemiBold),
+    titleLarge = style(18, 24, FontWeight.SemiBold), titleMedium = style(16, 22, FontWeight.SemiBold), titleSmall = style(15, 20, FontWeight.SemiBold),
+    bodyLarge = style(16, 22, FontWeight.Normal), bodyMedium = style(14, 20, FontWeight.Normal), bodySmall = style(12, 16, FontWeight.Normal),
+    labelLarge = style(15, 20, FontWeight.Medium), labelMedium = style(13, 18, FontWeight.Medium), labelSmall = style(11, 14, FontWeight.Medium),
+)
 
 @Composable
 fun PaperTheme(content: @Composable () -> Unit) =

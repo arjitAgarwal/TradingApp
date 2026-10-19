@@ -29,9 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.papertrade.app.data.market.DataMode
 import com.papertrade.app.data.market.LiveSource
 import com.papertrade.app.data.market.FeedState
@@ -59,8 +57,8 @@ fun MarketTicker(vm: AppVM, onIndex: (Underlying) -> Unit) {
             // Stale/cached/missing prices are greyed so an old number never passes for a live one.
             val fresh = freshnessOf(q, now, vm.maxAgeSec()).let { it == Freshness.LIVE || it == Freshness.DEMO }
             Row(Modifier.clickable { onIndex(u) }.testTag("ticker_${u.name}"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(u.displayName, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text(Fmt.inr(q?.ltp), fontSize = 13.sp, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(u.displayName, style = MaterialTheme.typography.labelMedium)
+                Text(Fmt.inr(q?.ltp), style = MaterialTheme.typography.bodyMedium, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                 ChangeBadge(q?.change)
             }
         }
@@ -71,7 +69,7 @@ fun MarketTicker(vm: AppVM, onIndex: (Underlying) -> Unit) {
 @Composable
 fun ChangeBadge(change: java.math.BigDecimal?) {
     val c = Fmt.color(change, MaterialTheme.colorScheme.onSurfaceVariant)
-    Text(Fmt.signed(change), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = c,
+    Text(Fmt.signed(change), style = MaterialTheme.typography.labelMedium, color = c,
         modifier = Modifier.background(c.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
@@ -83,9 +81,9 @@ fun AppHeader(onSearch: () -> Unit, onProfile: () -> Unit, paper: Boolean = fals
             Icon(Icons.AutoMirrored.Filled.ShowChart, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
         }
         Row(Modifier.padding(start = 12.dp).weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Text("Paper Trade", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Text("Paper Trade", style = MaterialTheme.typography.headlineSmall)
             // Real prices, simulated trades: keep that visible even when the title changes.
-            if (paper) Text("PAPER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (paper) Text("PAPER", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 8.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp).testTag("paper_tag"))
         }
         IconButton(onSearch, Modifier.testTag("header_search")) { Icon(Icons.Default.Search, "Search") }
@@ -122,15 +120,15 @@ fun MainScreen(vm: AppVM, nav: Nav) {
             MarketTicker(vm, nav.index)
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
                 Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
-                    color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
+                    color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(12.dp))
             }
-            if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
+            if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp))
             // Plain text tabs, underline on the selected one; scrolls instead of wrapping "Positions" onto two lines.
             ScrollableTabRow(selectedTabIndex = selected, edgePadding = 8.dp, containerColor = MaterialTheme.colorScheme.surface, divider = { HorizontalDivider() },
                 indicator = { pos -> TabRowDefaults.SecondaryIndicator(with(TabRowDefaults) { Modifier.tabIndicatorOffset(pos[selected]) }, height = 3.dp, color = MaterialTheme.colorScheme.onSurface) }) {
                 (fixedTabs.map { it to "tab_$it" } + lists.map { it.name to "tab_wl_${it.id}" }).forEachIndexed { i, (t, tag) ->
                     Tab(selected == i, { tab = i }, selectedContentColor = MaterialTheme.colorScheme.onSurface, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        text = { Text(t, fontSize = 16.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, softWrap = false) }, modifier = Modifier.testTag(tag))
+                        text = { Text(t, style = if (selected == i) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false) }, modifier = Modifier.testTag(tag))
                 }
                 Tab(false, { newList = true }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, icon = { Icon(Icons.Default.Add, "New watchlist") }, modifier = Modifier.testTag("tab_add_watchlist"))
             }
@@ -155,7 +153,7 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
     DisposableEffect(list.id, list.items.size) { vm.subscribe("watchlist", list.items.map { it.symbol }.toSet()); onDispose { vm.unsubscribe("watchlist") } }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${list.items.size} ${if (list.items.size == 1) "item" else "items"}", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("${list.items.size} ${if (list.items.size == 1) "item" else "items"}", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             IconButton({ renaming = true }, Modifier.testTag("rename_watchlist")) { Icon(Icons.Default.Edit, "Rename watchlist") }
             if (canDelete) IconButton({ confirmDelete = true }, Modifier.testTag("delete_watchlist")) { Icon(Icons.Default.DeleteOutline, "Delete watchlist") }
         }
@@ -188,26 +186,26 @@ private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).testTag("quick_actions")) {
             OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag("quick_open"), shape = RoundedCornerShape(16.dp)) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(Fmt.label(symbol, info), fontSize = 17.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f, fill = false))
+                    Text(Fmt.label(symbol, info), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Open details")
                     Spacer(Modifier.width(12.dp))
                     Column(horizontalAlignment = Alignment.End) {
-                        Text(Fmt.rupee(q?.ltp), fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                        Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", fontSize = 13.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant))
+                        Text(Fmt.rupee(q?.ltp), style = MaterialTheme.typography.titleMedium)
+                        Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", style = MaterialTheme.typography.bodyMedium, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant))
                     }
                 }
             }
             // Alerts aren't built yet; the row is here so the sheet matches the target layout.
             Row(Modifier.fillMaxWidth().clickable { vm.messages.tryEmit("Price alerts are coming soon") }.padding(vertical = 16.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.NotificationsNone, null); Spacer(Modifier.width(16.dp)); Text("Set alert", fontSize = 16.sp)
+                Icon(Icons.Default.NotificationsNone, null); Spacer(Modifier.width(16.dp)); Text("Set alert", style = MaterialTheme.typography.bodyLarge)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            if (info == null) Text("Contract details unavailable, so this can't be traded right now.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+            if (info == null) Text("Contract details unavailable, so this can't be traded right now.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
             Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Button({ onTrade(Side.SELL) }, Modifier.weight(1f).height(52.dp).testTag("btn_sell"), enabled = info != null, shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Loss, contentColor = Color.White)) { Text("Sell", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+                    colors = ButtonDefaults.buttonColors(containerColor = Loss, contentColor = Color.White)) { Text("Sell", style = MaterialTheme.typography.labelLarge) }
                 Button({ onTrade(Side.BUY) }, Modifier.weight(1f).height(52.dp).testTag("btn_buy"), enabled = info != null, shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Gain, contentColor = Color.White)) { Text("Buy", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+                    colors = ButtonDefaults.buttonColors(containerColor = Gain, contentColor = Color.White)) { Text("Buy", style = MaterialTheme.typography.labelLarge) }
             }
         }
     }
@@ -230,7 +228,7 @@ private fun BottomBar(onFno: () -> Unit, onUnavailable: (String) -> Unit) {
         listOf(Triple("Stocks", Icons.AutoMirrored.Filled.ShowChart, {}), Triple("F&O", Icons.Default.CandlestickChart, onFno),
             Triple("Mutual Funds", Icons.Default.PieChart, { onUnavailable("Mutual Funds") }), Triple("Loans", Icons.Default.Payments, { onUnavailable("Loans") }))
             .forEachIndexed { i, (label, icon, onClick) ->
-                NavigationBarItem(selected = i == 0, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label, fontSize = 11.sp, maxLines = 1) },
+                NavigationBarItem(selected = i == 0, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) },
                     modifier = Modifier.testTag("bottom_$label"))
             }
     }
@@ -265,14 +263,14 @@ fun ExploreScreen(vm: AppVM, nav: Nav) {
         vm.subscribe("explore", syms.toSet()); onDispose { vm.unsubscribe("explore") }
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("Market overview", fontWeight = FontWeight.SemiBold) }
+        item { Text("Market overview", style = MaterialTheme.typography.titleMedium) }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Underlying.values().forEach { u -> val q = quotes[u.indexSymbol]
                     OutlinedCard(Modifier.weight(1f).clickable { nav.index(u) }.testTag("card_${u.name}")) { Column(Modifier.padding(12.dp)) {
-                        Text(u.displayName); Text(Fmt.inr(q?.ltp), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text(u.displayName, style = MaterialTheme.typography.bodyMedium); Text(Fmt.inr(q?.ltp), style = MaterialTheme.typography.titleLarge)
                         Text(Fmt.pct(q?.changePct), color = Fmt.color(q?.changePct, MaterialTheme.colorScheme.onSurface))
-                        Text("Option chain · Futures →", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                        Text("Option chain · Futures →", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     } } }
             }
         }
@@ -286,7 +284,7 @@ fun ExploreScreen(vm: AppVM, nav: Nav) {
                     onToggle = { picking = i })
             }
         } }
-        if (results == null) item { Text("Your watchlists are the tabs after Orders. Search for a stock and tap ☆ to add it to one.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (results == null) item { Text("Your watchlists are the tabs after Orders. Search for a stock and tap ☆ to add it to one.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
     picking?.let { i -> WatchlistPicker(lists, i.symbol, onDismiss = { picking = null }) { w, add ->
         if (add) { vm.register(i); vm.addToWatchlist(w.id, i.symbol, i.name) } else vm.removeFromWatchlist(w.id, i.symbol)
@@ -311,12 +309,12 @@ fun StockRow(symbol: String, name: String, q: MarketQuote?, f: Freshness, starre
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(start = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(symbol.substringAfter(':').removeSuffix("-EQ"), fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                Text(name, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(symbol.substringAfter(':').removeSuffix("-EQ"), style = MaterialTheme.typography.titleSmall)
+                Text(name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(Fmt.rupee(q?.ltp), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", fontSize = 12.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant))
+                Text(Fmt.rupee(q?.ltp), style = MaterialTheme.typography.labelLarge, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", style = MaterialTheme.typography.bodySmall, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant))
             }
             IconButton(onToggle) { Icon(if (starred) Icons.Default.Star else Icons.Default.StarBorder, if (starred) "Remove from watchlist" else "Add to watchlist", tint = if (starred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
         }

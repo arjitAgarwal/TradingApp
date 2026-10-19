@@ -24,12 +24,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.papertrade.app.data.market.InstrumentInfo
 import com.papertrade.app.ui.AppVM
 import com.papertrade.app.ui.Fmt
@@ -96,20 +93,20 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
                     IconButton(onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(Fmt.label(info.symbol, info), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                            Text(Fmt.label(info.symbol, info), style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
                             Spacer(Modifier.width(6.dp)); PaperTag()
                         }
-                        Text("${Fmt.rupee(q?.ltp)}  (${Fmt.pct(q?.changePct)})", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${Fmt.rupee(q?.ltp)}  (${Fmt.pct(q?.changePct)})", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text("Depth", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline, modifier = Modifier.dashedUnderline(MaterialTheme.colorScheme.outline))
+                    Text("Depth", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline, modifier = Modifier.dashedUnderline(MaterialTheme.colorScheme.outline))
                 }
                 Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                     // Look-only product selector.
                     Row(Modifier.padding(top = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Delivery", fontWeight = FontWeight.Medium, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
+                        Text("Delivery", style = MaterialTheme.typography.labelLarge, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
                             .border(1.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(50)).padding(horizontal = 18.dp, vertical = 8.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text("Intraday", color = MaterialTheme.colorScheme.outline, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50)).padding(horizontal = 18.dp, vertical = 8.dp))
+                        Text("Intraday", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.outline, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50)).padding(horizontal = 18.dp, vertical = 8.dp))
                         Spacer(Modifier.width(12.dp)); VerticalDivider(Modifier.height(28.dp)); Spacer(Modifier.width(12.dp))
                         Box(Modifier.size(36.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape), contentAlignment = Alignment.Center) {
                             Icon(Icons.Outlined.Settings, null, Modifier.size(20.dp))
@@ -117,8 +114,8 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
                     }
                     // Quantity: shares on screen; -/+ step one lot.
                     Row(Modifier.fillMaxWidth().padding(top = 28.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Qty", fontSize = 17.sp)
-                        if (fno) Text("  ${(shares / lot).coerceAtLeast(0)} lot x $lot", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Qty", style = MaterialTheme.typography.bodyLarge)
+                        if (fno) Text("  ${(shares / lot).coerceAtLeast(0)} lot x $lot", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.weight(1f))
                         Row(Modifier.width(160.dp).border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
                             IconButton({ rejected = null; qtyText = (shares - lot).coerceAtLeast(lot).toString() }, Modifier.testTag("qty_minus")) { Icon(Icons.Default.Remove, "Less") }
@@ -129,8 +126,8 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
                     // Price: Market by default (D4); tap the label to switch to Limit.
                     Row(Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.clickable { rejected = null; type = if (type == OrderType.MARKET) OrderType.LIMIT else OrderType.MARKET }.testTag("price_type"), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Price ", fontSize = 17.sp)
-                            Text(if (type == OrderType.MARKET) "Market" else "Limit", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Price ", style = MaterialTheme.typography.bodyLarge)
+                            Text(if (type == OrderType.MARKET) "Market" else "Limit", style = MaterialTheme.typography.titleMedium)
                             Icon(Icons.Default.UnfoldMore, "Change price type", Modifier.size(20.dp))
                         }
                         Spacer(Modifier.weight(1f))
@@ -139,30 +136,30 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
                             .background(if (type == OrderType.MARKET) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent, RoundedCornerShape(8.dp)).padding(horizontal = 12.dp),
                             contentAlignment = Alignment.CenterEnd) {
                             if (type == OrderType.LIMIT) NumberField(limitText, { rejected = null; limitText = it.filter { c -> c.isDigit() || c == '.' }.take(10) }, KeyboardType.Decimal, Modifier.fillMaxWidth().testTag("limit"), TextAlign.End)
-                            else Text("At market", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
+                            else Text("At market", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
                         }
                     }
                     if (type == OrderType.LIMIT && lp != null && q?.ltp?.signum() == 1) {
                         val diff = (lp - q.ltp).multiply(BigDecimal(100)).divide(q.ltp, 2, RoundingMode.HALF_UP)
-                        Text("${if (diff.signum() > 0) "+" else ""}${diff.toPlainString()}% from market", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Text("${if (diff.signum() > 0) "+" else ""}${diff.toPlainString()}% from market", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.align(Alignment.End).padding(top = 6.dp))
                     }
-                    Text("Add stoploss/target", fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.End).padding(top = 16.dp)
+                    Text("Add stoploss/target", style = MaterialTheme.typography.labelLarge, modifier = Modifier.align(Alignment.End).padding(top = 16.dp)
                         .dashedUnderline(MaterialTheme.colorScheme.onSurface).clickable { vm.messages.tryEmit("Stoploss/target is coming next") })
                     Spacer(Modifier.weight(1f))
                     problem?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, fontSize = 14.sp,
+                        Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(12.dp)).padding(14.dp).testTag("order_problem"))
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 // Footer: virtual balance, approximate requirement, one Buy/Sell button (no "Add money").
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Balance : ", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                    Text(Fmt.rupee(valuation?.availableCash, 0), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("Balance : ", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                    Text(Fmt.rupee(valuation?.availableCash, 0), style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.weight(1f))
-                    Text("Approx req : ", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp, modifier = Modifier.dashedUnderline(MaterialTheme.colorScheme.outline))
-                    Text(Fmt.rupee(required, 0), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("Approx req : ", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.dashedUnderline(MaterialTheme.colorScheme.outline))
+                    Text(Fmt.rupee(required, 0), style = MaterialTheme.typography.titleSmall)
                     Icon(Icons.Default.Refresh, null, Modifier.padding(start = 6.dp).size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Button({
@@ -170,7 +167,7 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
                     vm.placeOrder(info, side, type, shares / lot, if (type == OrderType.LIMIT) lp else null) { r -> placing = false; if (r.error == null) onClose() else rejected = r.error }
                 }, Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp).height(52.dp).testTag("submit_order"), enabled = problem == null && !placing,
                     shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = sideColor, contentColor = Color.White)) {
-                    Text(if (side == Side.BUY) "Buy" else "Sell", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (side == Side.BUY) "Buy" else "Sell", style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -180,10 +177,10 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
 @Composable
 private fun NumberField(value: String, onChange: (String) -> Unit, keyboard: KeyboardType, modifier: Modifier, align: TextAlign = TextAlign.Center) =
     BasicTextField(value, onChange, modifier, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-        textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, textAlign = align, color = MaterialTheme.colorScheme.onSurface))
+        textStyle = MaterialTheme.typography.titleMedium.copy(textAlign = align, color = MaterialTheme.colorScheme.onSurface))
 
 @Composable
-private fun PaperTag() = Text("PAPER", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant,
+private fun PaperTag() = Text("PAPER", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
     modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp))
 
 /** Groww's dotted underline under tappable labels. */
