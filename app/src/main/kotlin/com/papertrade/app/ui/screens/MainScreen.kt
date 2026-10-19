@@ -1,7 +1,6 @@
 package com.papertrade.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -49,13 +48,10 @@ import androidx.compose.ui.graphics.Color
 
 /** One thin, sideways-scrolling line: "NIFTY 50  24,913.50 [+148.80]   SENSEX …". Tap an index to open it. */
 @Composable
-fun MarketTicker(vm: AppVM, onIndex: (Underlying) -> Unit, paper: Boolean = false) {
+fun MarketTicker(vm: AppVM, onIndex: (Underlying) -> Unit) {
     val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-        // Real prices, simulated trades: keep that visible now that there is no header.
-        if (paper) Text("PAPER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp).testTag("paper_tag"))
         Underlying.values().forEach { u ->
             val q = quotes[u.indexSymbol]
             // Stale/cached/missing prices are greyed so an old number never passes for a live one.
@@ -98,7 +94,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
         Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
-            MarketTicker(vm, nav.index, paper = settings.dataMode == DataMode.LIVE_PROVIDER)
+            MarketTicker(vm, nav.index)
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
                 Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
                     color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
