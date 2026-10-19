@@ -176,7 +176,7 @@ class UpstoxProvider(
             val ts = trading_symbol ?: return null
             return InstrumentInfo("NSE:$ts-EQ", name ?: ts, Segment.EQUITY, 1, tick)
         }
-        val exp = expiry?.let { LocalDate.ofInstant(Instant.ofEpochMilli(it), MarketHours.IST) } ?: return null
+        val exp = expiry?.let { Instant.ofEpochMilli(it).atZone(MarketHours.IST).toLocalDate() } ?: return null
         val und = underlying_symbol ?: return null
         val ex = segment.substringBefore('_')
         val opt = when (instrument_type) { "CE" -> OptionType.CE; "PE" -> OptionType.PE; else -> null }

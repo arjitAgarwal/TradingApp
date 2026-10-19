@@ -190,7 +190,7 @@ class FyersProvider(
                     if (c.size < 17) return@mapNotNull null
                     val lot = c[3].trim().toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
                     val tick = c[4].trim().toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: return@mapNotNull null
-                    val exp = c[8].trim().toLongOrNull()?.takeIf { it > 0 }?.let { LocalDate.ofInstant(Instant.ofEpochSecond(it), MarketHours.IST) }
+                    val exp = c[8].trim().toLongOrNull()?.takeIf { it > 0 }?.let { Instant.ofEpochSecond(it).atZone(MarketHours.IST).toLocalDate() }
                     val strike = c[15].trim().toBigDecimalOrNull()?.takeIf { it.signum() > 0 }
                     val opt = when (c[16].trim()) { "CE" -> OptionType.CE; "PE" -> OptionType.PE; else -> null }
                     MasterRow(c[9].trim(), c[1].trim(), lot, tick, exp, c[13].trim(), strike, opt)

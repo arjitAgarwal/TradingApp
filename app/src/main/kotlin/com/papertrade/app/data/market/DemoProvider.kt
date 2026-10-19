@@ -56,8 +56,8 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
     }
 
     private fun nextThursdays(n: Int): List<LocalDate> {
-        var d = LocalDate.ofInstant(clock(), zone); val out = mutableListOf<LocalDate>()
-        while (out.size < n) { if (d.dayOfWeek == DayOfWeek.THURSDAY && !d.isBefore(LocalDate.ofInstant(clock(), zone))) out += d; d = d.plusDays(1) }
+        var d = clock().atZone(zone).toLocalDate(); val out = mutableListOf<LocalDate>()
+        while (out.size < n) { if (d.dayOfWeek == DayOfWeek.THURSDAY && !d.isBefore(clock().atZone(zone).toLocalDate())) out += d; d = d.plusDays(1) }
         return out
     }
 
