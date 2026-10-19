@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.CandlestickChart
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -201,12 +202,12 @@ private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit
         dismissButton = { TextButton({ onDone(null) }) { Text("Cancel") } })
 }
 
-/** Stocks is this screen; F&O opens the NIFTY option chain; Mutual Funds doesn't exist here, so it only explains that; Account opens settings. */
+/** Stocks is this screen; F&O opens the NIFTY option chain; Mutual Funds doesn't exist here, so it only explains that; Loans opens Account (no loans in a paper app). */
 @Composable
 private fun BottomBar(onFno: () -> Unit, onAccount: () -> Unit, onUnavailable: (String) -> Unit) {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
         listOf(Triple("Stocks", Icons.AutoMirrored.Filled.ShowChart, {}), Triple("F&O", Icons.Default.CandlestickChart, onFno),
-            Triple("Mutual Funds", Icons.Default.PieChart, { onUnavailable("Mutual Funds") }), Triple("Account", Icons.Default.Person, onAccount))
+            Triple("Mutual Funds", Icons.Default.PieChart, { onUnavailable("Mutual Funds") }), Triple("Loans", Icons.Default.Payments, onAccount))
             .forEachIndexed { i, (label, icon, onClick) ->
                 NavigationBarItem(selected = i == 0, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label, fontSize = 11.sp, maxLines = 1) },
                     modifier = Modifier.testTag("bottom_$label"))
