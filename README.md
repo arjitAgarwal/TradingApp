@@ -1,6 +1,6 @@
 # Paper Trade India (Android, Kotlin, Compose)
 
-Personal **paper-trading** app for Indian markets (equities, NIFTY/SENSEX futures and options) using real prices from a market-data provider and **virtual money only** (₹10,00,000 start). There is no code anywhere that places a real order, moves money, or talks to a brokerage trading endpoint. The only network use is read-only market data.
+Personal **paper-trading** app for Indian markets (equities, NIFTY/SENSEX futures and options) using real prices from a market-data provider and **virtual money only** (₹13,54,510 start). There is no code anywhere that places a real order, moves money, or talks to a brokerage trading endpoint. The only network use is read-only market data.
 
 > **⚠ Read this first**
 > 1. **Terms of use.** FYERS' API terms prohibit using its data for paper/virtual trading and charting tools without written consent (see `docs/PROVIDERS.md`). You chose to build for FYERS anyway; using it is at your own risk. The default mode is DEMO (synthetic data).

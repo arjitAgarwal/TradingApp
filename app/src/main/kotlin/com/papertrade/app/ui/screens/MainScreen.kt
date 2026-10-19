@@ -16,10 +16,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CandlestickChart
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PieChart
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
@@ -50,10 +48,13 @@ import androidx.compose.ui.graphics.Color
 
 /** One thin, sideways-scrolling line: "NIFTY 50  24,913.50 [+148.80]   SENSEX …". Tap an index to open it. */
 @Composable
-fun MarketTicker(vm: AppVM, onIndex: (Underlying) -> Unit) {
+fun MarketTicker(vm: AppVM, onIndex: (Underlying) -> Unit, paper: Boolean = false) {
     val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Real prices, simulated trades: keep that visible now that there is no header.
+        if (paper) Text("PAPER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp).testTag("paper_tag"))
         Underlying.values().forEach { u ->
             val q = quotes[u.indexSymbol]
             // Stale/cached/missing prices are greyed so an old number never passes for a live one.
@@ -73,28 +74,6 @@ fun ChangeBadge(change: java.math.BigDecimal?) {
     val c = Fmt.color(change, MaterialTheme.colorScheme.onSurfaceVariant)
     Text(Fmt.signed(change), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = c,
         modifier = Modifier.background(c.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
-}
-
-/** Compact one-row header. Logo and title are placeholders until the header design is decided. */
-@Composable
-fun AppHeader(onSearch: () -> Unit, onProfile: () -> Unit, paper: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
-            Icon(Icons.AutoMirrored.Filled.ShowChart, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
-        }
-        Row(Modifier.padding(start = 12.dp).weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Text("Paper Trade", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            // Real prices, simulated trades: keep that visible even when the title changes.
-            if (paper) Text("PAPER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 8.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp).testTag("paper_tag"))
-        }
-        IconButton(onSearch, Modifier.testTag("header_search")) { Icon(Icons.Default.Search, "Search") }
-        IconButton(onProfile, Modifier.testTag("open_account")) {
-            Box(Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Person, "Account", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-            }
-        }
-    }
 }
 
 @Composable
@@ -118,8 +97,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
         Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
-            AppHeader(onSearch = { tab = 0 }, onProfile = nav.account, paper = settings.dataMode == DataMode.LIVE_PROVIDER)
-            MarketTicker(vm, nav.index)
+            MarketTicker(vm, nav.index, paper = settings.dataMode == DataMode.LIVE_PROVIDER)
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
                 Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
                     color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
@@ -135,7 +113,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
                 Tab(false, { newList = true }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, icon = { Icon(Icons.Default.Add, "New watchlist") }, modifier = Modifier.testTag("tab_add_watchlist"))
             }
         }
-    }, bottomBar = { BottomBar(onFno = { nav.chain(Underlying.NIFTY) }, onUnavailable = { vm.messages.tryEmit("$it isn't part of this paper-trading app") }) }) { pad ->
+    }, bottomBar = { BottomBar(onFno = { nav.chain(Underlying.NIFTY) }, onAccount = nav.account, onUnavailable = { vm.messages.tryEmit("$it isn't part of this paper-trading app") }) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (selected) {
                 0 -> ExploreScreen(vm, nav); 1 -> HoldingsScreen(vm, nav); 2 -> PositionsScreen(vm); 3 -> OrdersScreen(vm)
@@ -223,12 +201,12 @@ private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit
         dismissButton = { TextButton({ onDone(null) }) { Text("Cancel") } })
 }
 
-/** Stocks is this screen; F&O opens the NIFTY option chain; Mutual Funds and Loans don't exist here, so they only explain that. */
+/** Stocks is this screen; F&O opens the NIFTY option chain; Mutual Funds doesn't exist here, so it only explains that; Account opens settings. */
 @Composable
-private fun BottomBar(onFno: () -> Unit, onUnavailable: (String) -> Unit) {
+private fun BottomBar(onFno: () -> Unit, onAccount: () -> Unit, onUnavailable: (String) -> Unit) {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
         listOf(Triple("Stocks", Icons.AutoMirrored.Filled.ShowChart, {}), Triple("F&O", Icons.Default.CandlestickChart, onFno),
-            Triple("Mutual Funds", Icons.Default.PieChart, { onUnavailable("Mutual Funds") }), Triple("Loans", Icons.Default.Payments, { onUnavailable("Loans") }))
+            Triple("Mutual Funds", Icons.Default.PieChart, { onUnavailable("Mutual Funds") }), Triple("Account", Icons.Default.Person, onAccount))
             .forEachIndexed { i, (label, icon, onClick) ->
                 NavigationBarItem(selected = i == 0, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label, fontSize = 11.sp, maxLines = 1) },
                     modifier = Modifier.testTag("bottom_$label"))

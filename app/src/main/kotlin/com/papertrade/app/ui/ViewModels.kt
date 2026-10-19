@@ -86,7 +86,7 @@ class AppVM(private val c: AppContainer) : ViewModel() {
         if (r.isSuccess) messages.tryEmit("Logged in to Upstox until 3:30 AM tomorrow.")
         onDone(r)
     }
-    fun reset() = viewModelScope.launch { c.trading.resetSimulation(); messages.tryEmit("Simulation reset to ₹10,00,000") }
+    fun reset() = viewModelScope.launch { c.trading.resetSimulation(); messages.tryEmit("Simulation reset to ₹13,54,510") }
     fun export(onText: (String) -> Unit) { viewModelScope.launch { onText(c.trading.exportJson()) } }
     fun import(text: String) { viewModelScope.launch { runCatching { c.trading.importJson(text) }.onSuccess { messages.tryEmit("Import complete") }.onFailure { messages.tryEmit("Import failed: ${it.message}") } } }
 
