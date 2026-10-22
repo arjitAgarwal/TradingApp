@@ -165,8 +165,8 @@ private fun WatchRow(label: Pair<String, String?>, q: MarketQuote?, f: Freshness
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(label.first, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                label.second?.let { Text(it, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp)) }
+                Text(label.first, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                label.second?.let { Text(it, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp)) }
             }
             Sparkline(closes, q?.ltp, q?.prevClose, q?.change, Modifier.padding(horizontal = 8.dp).size(width = 52.dp, height = 20.dp))
             Column(Modifier.width(118.dp), horizontalAlignment = Alignment.End) {
