@@ -180,7 +180,7 @@ private fun NumberField(value: String, onChange: (String) -> Unit, keyboard: Key
         textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, textAlign = align, color = MaterialTheme.colorScheme.onSurface))
 
 /** Groww's dotted underline under tappable labels. */
-private fun Modifier.dashedUnderline(color: Color) = drawBehind {
+internal fun Modifier.dashedUnderline(color: Color) = drawBehind {
     val y = size.height + 2.dp.toPx()
     drawLine(color, Offset(0f, y), Offset(size.width, y), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)))
 }

@@ -141,6 +141,6 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
     }
 
     override fun quoteStream(symbols: Set<String>): Flow<MarketQuote> = flow {
-        while (true) { quotes(symbols.toList()).getOrNull()?.forEach { emit(it) }; delay(2000) }
+        while (true) { quotes(symbols.toList()).getOrNull()?.forEach { emit(it) }; delay(1000) }
     }
 }

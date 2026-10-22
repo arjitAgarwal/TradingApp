@@ -59,6 +59,7 @@ class FyersProvider(
     private val cacheDir: File,
     private val http: OkHttpClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build(),
     private val clock: () -> Instant = { Instant.now() },
+    // FYERS Standard plan data APIs: 5/s, 50/min, 5,000/day, and a day-long block after 3 per-minute breaches. 1s polling would break it.
     private val pollIntervalMs: Long = 3_000,
     private val dataBase: String = "https://api-t1.fyers.in/data",
     private val masterBase: String = "https://public.fyers.in/sym_details",

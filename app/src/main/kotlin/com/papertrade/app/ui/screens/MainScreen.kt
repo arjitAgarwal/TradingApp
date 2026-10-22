@@ -113,7 +113,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     }, bottomBar = { BottomBar(onFno = { nav.chain(Underlying.NIFTY) }, onAccount = nav.account, onUnavailable = { vm.messages.tryEmit("$it isn't part of this paper-trading app") }) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (selected) {
-                0 -> ExploreScreen(vm, nav); 1 -> HoldingsScreen(vm, nav); 2 -> PositionsScreen(vm); 3 -> OrdersScreen(vm)
+                0 -> ExploreScreen(vm, nav); 1 -> HoldingsScreen(vm, nav); 2 -> PositionsScreen(vm, nav); 3 -> OrdersScreen(vm)
                 else -> lists.getOrNull(selected - fixedTabs.size)?.let { WatchlistScreen(vm, nav, it, canDelete = lists.size > 1) }
             }
         }

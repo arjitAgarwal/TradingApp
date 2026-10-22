@@ -61,7 +61,8 @@ class UpstoxProvider(
     private val cacheDir: File,
     private val http: OkHttpClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build(),
     private val clock: () -> Instant = { Instant.now() },
-    private val pollIntervalMs: Long = 3_000,
+    // Upstox allows 2,000 calls per API per 30 minutes, so 1s quote polling (1,800) just fits.
+    private val pollIntervalMs: Long = 1_000,
     private val apiBase: String = "https://api.upstox.com",
     private val assetsBase: String = "https://assets.upstox.com/market-quote/instruments/exchange",
 ) : MarketDataProvider {
@@ -72,7 +73,7 @@ class UpstoxProvider(
     override val feedStatus: StateFlow<FeedStatus> = status
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true }
-    private val limiter = SlidingWindowLimiter(maxPerSecond = 10, maxPerMinute = 60, clock = { System.currentTimeMillis() })
+    private val limiter = SlidingWindowLimiter(maxPerSecond = 10, maxPerMinute = 150, clock = { System.currentTimeMillis() })
     private val debug = HttpDebugLog("UpstoxHttp")
 
     private fun JsonElement?.str() = (this as? JsonPrimitive)?.content?.takeIf { it != "null" }
