@@ -95,6 +95,26 @@ class AppVM(private val c: AppContainer) : ViewModel() {
     fun createWatchlist(name: String) = viewModelScope.launch { c.watchlists.create(name) }
     fun renameWatchlist(id: Long, name: String) = viewModelScope.launch { c.watchlists.rename(id, name) }
     fun deleteWatchlist(id: Long) = viewModelScope.launch { c.watchlists.delete(id) }
+    /** Watchlist sparklines: 5-minute closes of each symbol's latest session, refetched at most every 5 minutes. */
+    val sparks = MutableStateFlow<Map<String, List<BigDecimal>>>(emptyMap())
+    private val sparkFetched = mutableMapOf<String, Instant>()
+    private var sparkJob: Job? = null
+    private var sparkProvider: String? = null
+    fun loadSparks(symbols: Collection<String>) {
+        if (sparkJob?.isActive == true) return
+        // Demo and live prices must never share a chart.
+        if (sparkProvider != provider.value.id) { sparkProvider = provider.value.id; sparkFetched.clear(); sparks.value = emptyMap() }
+        sparkJob = viewModelScope.launch {
+            // One at a time so a long watchlist never bursts the broker's request limit.
+            symbols.filter { s -> sparkFetched[s]?.let { Instant.now().isAfter(it.plusSeconds(300)) } ?: true }.forEach { s ->
+                provider.value.candles(s, CandleInterval.M5).onSuccess { candles ->
+                    val day = candles.maxOfOrNull { it.time.atZone(MarketHours.IST).toLocalDate() } ?: return@onSuccess
+                    sparkFetched[s] = Instant.now()
+                    sparks.update { it + (s to candles.filter { c -> c.time.atZone(MarketHours.IST).toLocalDate() == day }.map { c -> c.close }) }
+                }
+            }
+        }
+    }
     suspend fun search(q: String) = provider.value.searchEquities(q)
     suspend fun equityInfo(symbol: String) = provider.value.equityInfo(symbol).onSuccess { c.contracts[symbol] = it }
 }

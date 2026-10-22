@@ -100,6 +100,26 @@ fun PriceChart(candles: List<Candle>, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Watchlist mini chart (Groww style): today's closes ending at the live price, coloured by the day's change,
+ * over a dashed line at the previous close. Draws nothing without a live price (e.g. an expired contract).
+ */
+@Composable
+fun Sparkline(closes: List<BigDecimal>, ltp: BigDecimal?, prevClose: BigDecimal?, change: BigDecimal?, modifier: Modifier = Modifier) {
+    val pts = (if (ltp != null) closes + ltp else emptyList()).map { it.toDouble() }
+    Canvas(modifier) {
+        if (pts.size < 2) return@Canvas
+        val base = prevClose?.toDouble()
+        val min = minOf(pts.min(), base ?: pts.min()); val max = maxOf(pts.max(), base ?: pts.max()); val span = (max - min).takeIf { it > 0 } ?: 1.0
+        fun y(v: Double) = (size.height * (1 - (v - min) / span)).toFloat()
+        base?.let { drawLine(Color.Gray.copy(alpha = 0.4f), Offset(0f, y(it)), Offset(size.width, y(it)), strokeWidth = 1.5f,
+            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 6f))) }
+        val path = Path().apply { pts.forEachIndexed { i, v -> val x = size.width * i / (pts.size - 1); if (i == 0) moveTo(x, y(v)) else lineTo(x, y(v)) } }
+        val up = change?.let { it.signum() >= 0 } ?: (pts.last() >= pts.first())
+        drawPath(path, if (up) Gain else Loss, style = Stroke(width = 2.5f))
+    }
+}
+
 /** Empty tab: a large soft icon in a circle, a title and one line of help, centred. */
 @Composable
 fun EmptyState(icon: ImageVector, title: String, body: String? = null) =

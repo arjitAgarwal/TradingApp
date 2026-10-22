@@ -85,14 +85,19 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
 
     private fun demoDerivativeQuote(s: String, now: Instant): MarketQuote? {
         val u = Underlying.values().firstOrNull { s.startsWith("DEMO:${it.name}") } ?: return null
-        val spot = spot(bases.getValue(u.indexSymbol), u.indexSymbol, now)
-        return if (s.endsWith("FUT")) quoteFor(s, spot * 1.002, bases.getValue(u.indexSymbol) * 1.002, now)
-        else {
-            val body = s.removePrefix("DEMO:${u.name}"); val strike = body.substring(6, body.length - 2).toInt()
-            val t = if (s.endsWith("CE")) OptionType.CE else OptionType.PE
-            quoteFor(s, optionPrice(spot, strike, t), optionPrice(bases.getValue(u.indexSymbol), strike, t), now)
-        }
+        return quoteFor(s, derivativePrice(s, u, spot(bases.getValue(u.indexSymbol), u.indexSymbol, now)), derivativePrice(s, u, bases.getValue(u.indexSymbol)), now)
     }
+
+    /** A demo future or option priced off the given index level. */
+    private fun derivativePrice(s: String, u: Underlying, index: Double): Double {
+        if (s.endsWith("FUT")) return index * 1.002
+        val body = s.removePrefix("DEMO:${u.name}"); val strike = body.substring(6, body.length - 2).toInt()
+        return optionPrice(index, strike, if (s.endsWith("CE")) OptionType.CE else OptionType.PE)
+    }
+
+    /** Synthetic price of any demo symbol at [at]; null for symbols this provider doesn't know. */
+    private fun priceAt(s: String, at: Instant): Double? = bases[s]?.let { spot(it, s, at) }
+        ?: Underlying.values().firstOrNull { s.startsWith("DEMO:${it.name}") }?.let { u -> derivativePrice(s, u, spot(bases.getValue(u.indexSymbol), u.indexSymbol, at)) }
 
     override suspend fun searchEquities(query: String) = runCatching {
         equities.filter { it.key.contains(query, true) || it.value.first.contains(query, true) }.map { (s, v) -> info(s, v.first) }
@@ -124,12 +129,13 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
     }
 
     override suspend fun candles(symbol: String, interval: CandleInterval) = runCatching {
-        val base = bases[symbol] ?: bases.getValue(Underlying.NIFTY.indexSymbol)
+        val price: (Instant) -> Double = if (priceAt(symbol, clock()) != null) { t -> priceAt(symbol, t)!! }
+            else { t -> spot(bases.getValue(Underlying.NIFTY.indexSymbol), symbol, t) }
         val stepSec = when (interval) { CandleInterval.M1 -> 60L; CandleInterval.M5 -> 300; CandleInterval.M15 -> 900; CandleInterval.H1 -> 3600; CandleInterval.D1 -> 86400 }
         val end = clock().epochSecond / stepSec * stepSec
         (80 downTo 1).map { i ->
             val t0 = Instant.ofEpochSecond(end - i * stepSec); val t1 = Instant.ofEpochSecond(end - (i - 1) * stepSec)
-            val o = spot(base, symbol, t0); val c = spot(base, symbol, t1)
+            val o = price(t0); val c = price(t1)
             Candle(t0, tick(o), tick(max(o, c) * 1.0005), tick(minOf(o, c) * 0.9995), tick(c), 1000)
         }
     }

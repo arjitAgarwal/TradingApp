@@ -25,7 +25,7 @@ object Fmt {
     fun color(v: BigDecimal?, neutral: Color) = when { v == null || v.signum() == 0 -> neutral; v.signum() > 0 -> Gain; else -> Loss }
     private val timeFmt = DateTimeFormatter.ofPattern("dd MMM, HH:mm:ss").withZone(MarketHours.IST)
     fun time(i: Instant?) = i?.let { timeFmt.format(it) + " IST" } ?: "—"
-    private val expiryFmt = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
+    private val expiryFmt = DateTimeFormatter.ofPattern("dd MMM", Locale.ENGLISH)
     /** Groww-style label: "NIFTY 19 Oct 22650 Call", "RELIANCE 27 Oct Fut", or the bare ticker for equities. */
     fun label(symbol: String, info: com.papertrade.app.data.market.InstrumentInfo?): String {
         val e = info?.expiry ?: return symbol.substringAfter(':').removeSuffix("-EQ")
@@ -35,6 +35,8 @@ object Fmt {
             else -> "$u ${expiryFmt.format(e)} ${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${if (info.optionType == com.papertrade.core.OptionType.CE) "Call" else "Put"}"
         }
     }
+    /** Groww's watchlist change line: signed amount, unsigned percent, e.g. "-133.70 (51.83%)". */
+    fun changeLine(change: BigDecimal?, pct: BigDecimal?) = "${signed(change)} (${pct?.abs()?.setScale(2, RoundingMode.HALF_UP)?.toPlainString()?.plus("%") ?: "—"})"
 }
 
 enum class Freshness { LIVE, DELAYED, STALE, CACHED, DEMO, NONE }

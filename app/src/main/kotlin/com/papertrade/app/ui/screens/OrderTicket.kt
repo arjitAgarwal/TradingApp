@@ -95,10 +95,7 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
                 Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                     Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(Fmt.label(info.symbol, info), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
-                            Spacer(Modifier.width(6.dp)); PaperTag()
-                        }
+                        Text(Fmt.label(info.symbol, info), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         Text("${Fmt.rupee(q?.ltp)}  (${Fmt.pct(q?.changePct)})", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text("Depth", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline, modifier = Modifier.dashedUnderline(MaterialTheme.colorScheme.outline))
@@ -181,10 +178,6 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
 private fun NumberField(value: String, onChange: (String) -> Unit, keyboard: KeyboardType, modifier: Modifier, align: TextAlign = TextAlign.Center) =
     BasicTextField(value, onChange, modifier, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = keyboard),
         textStyle = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, textAlign = align, color = MaterialTheme.colorScheme.onSurface))
-
-@Composable
-private fun PaperTag() = Text("PAPER", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant,
-    modifier = Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 1.dp))
 
 /** Groww's dotted underline under tappable labels. */
 private fun Modifier.dashedUnderline(color: Color) = drawBehind {

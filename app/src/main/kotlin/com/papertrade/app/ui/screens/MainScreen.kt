@@ -127,7 +127,9 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
     val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
     var renaming by remember { mutableStateOf(false) }; var confirmDelete by remember { mutableStateOf(false) }
     var action by remember { mutableStateOf<WatchlistItemEntity?>(null) }
+    val sparks by vm.sparks.collectAsState()
     DisposableEffect(list.id, list.items.size) { vm.subscribe("watchlist", list.items.map { it.symbol }.toSet()); onDispose { vm.unsubscribe("watchlist") } }
+    LaunchedEffect(list.id, list.items.size) { while (true) { vm.loadSparks(list.items.map { it.symbol }); kotlinx.coroutines.delay(60_000) } }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${list.items.size} ${if (list.items.size == 1) "item" else "items"}", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -137,15 +139,15 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
         if (list.items.isEmpty()) EmptyState(Icons.Default.StarBorder, "This watchlist is empty", "Search in Explore and tap ☆ to add a stock.")
         else LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
             items(list.items, key = { it.symbol }) { item -> Box(Modifier.testTag("wl_item_${item.symbol}")) {
-                StockRow(item.symbol, item.name, quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()), true,
-                    onClick = { action = item },
-                    onToggle = { vm.removeFromWatchlist(list.id, item.symbol) }) }
+                WatchRow(Fmt.label(item.symbol, vm.info(item.symbol)), quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()),
+                    sparks[item.symbol].orEmpty()) { action = item } }
             }
         }
     }
     action?.let { item -> QuickActionSheet(vm, item.symbol, quotes[item.symbol], { action = null },
         onOpen = { action = null; if (item.symbol.endsWith("-EQ")) nav.stock(item.symbol) else nav.contract(item.symbol) },
-        onTrade = { side -> action = null; nav.order(item.symbol, side) }) }
+        onTrade = { side -> action = null; nav.order(item.symbol, side) },
+        onRemove = { action = null; vm.removeFromWatchlist(list.id, item.symbol) }) }
     if (renaming) NameDialog("Rename watchlist", list.name) { name -> renaming = false; name?.let { vm.renameWatchlist(list.id, it) } }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete \"${list.name}\"?") },
         text = { Text("The watchlist and its ${list.items.size} items will be removed.") },
@@ -153,10 +155,31 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
         dismissButton = { TextButton({ confirmDelete = false }) { Text("Cancel") } })
 }
 
-/** Groww-style sheet shown on tapping a watchlist row: name card (tap to open full details), Set alert, Sell / Buy. */
+/**
+ * Groww watchlist row: one-line name, today's mini chart in a fixed column, price over change.
+ * The price column has a fixed width so the charts line up down the list.
+ */
+@Composable
+private fun WatchRow(title: String, q: MarketQuote?, f: Freshness, closes: List<java.math.BigDecimal>, onClick: () -> Unit) {
+    val fresh = f == Freshness.LIVE || f == Freshness.DEMO
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 18.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Sparkline(closes, q?.ltp, q?.prevClose, q?.change, Modifier.padding(horizontal = 8.dp).size(width = 52.dp, height = 20.dp))
+            Column(Modifier.width(118.dp), horizontalAlignment = Alignment.End) {
+                Text(Fmt.rupee(q?.ltp), fontSize = 15.sp, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(Fmt.changeLine(q?.change, q?.changePct), fontSize = 13.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant),
+                    maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+/** Groww-style sheet shown on tapping a watchlist row: name card (tap to open full details), Set alert, Remove, Sell / Buy. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose: () -> Unit, onOpen: () -> Unit, onTrade: (Side) -> Unit) {
+private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose: () -> Unit, onOpen: () -> Unit, onTrade: (Side) -> Unit, onRemove: () -> Unit) {
     var info by remember(symbol) { mutableStateOf(vm.info(symbol)) }
     LaunchedEffect(symbol) { if (info == null && symbol.endsWith("-EQ")) vm.equityInfo(symbol).onSuccess { info = it; vm.register(it) } }
     ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
@@ -175,6 +198,11 @@ private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose
             // Alerts aren't built yet; the row is here so the sheet matches the target layout.
             Row(Modifier.fillMaxWidth().clickable { vm.messages.tryEmit("Price alerts are coming soon") }.padding(vertical = 16.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.NotificationsNone, null); Spacer(Modifier.width(16.dp)); Text("Set alert", fontSize = 16.sp)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            // Rows have no star (as in Groww), so removal lives here.
+            Row(Modifier.fillMaxWidth().clickable(onClick = onRemove).padding(vertical = 16.dp, horizontal = 4.dp).testTag("quick_remove"), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.DeleteOutline, null); Spacer(Modifier.width(16.dp)); Text("Remove from watchlist", fontSize = 16.sp)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             if (info == null) Text("Contract details unavailable, so this can't be traded right now.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
