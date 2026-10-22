@@ -32,7 +32,7 @@ class TradingRepository(
     private val db: AppDatabase,
     private val settings: suspend () -> AppSettings,
     private val clock: () -> Instant = { Instant.now() },
-    val startingCapital: BigDecimal = BigDecimal("1000000"),
+    val startingCapital: BigDecimal = BigDecimal("1354510"),
 ) {
     private val dao = db.trading(); private val market = db.marketCache()
     private val mutex = Mutex()
@@ -54,7 +54,20 @@ class TradingRepository(
         if (dao.wallet() == null) {
             val now = clock(); val s = AccountState.initial(startingCapital, now)
             dao.persistTrade(s.wallet.toEntity(), emptyList(), emptyList(), emptyList(), s.ledger.mapIndexed { i, e -> e.toEntity(i.toLong()) })
-        }
+        } else topUpOldCapital()
+    }
+
+    /**
+     * One time: wallets created with the old ₹10,00,000 default move to [startingCapital]. The difference is added to cash with a
+     * ledger entry (ledger sum must equal cash), so trades, positions and net P&L stay exactly as they were.
+     */
+    private suspend fun topUpOldCapital() {
+        val w = dao.wallet()?.toDomain() ?: return
+        if (w.startingCapital.compareTo(BigDecimal("1000000")) != 0 || startingCapital.compareTo(w.startingCapital) == 0) return
+        val delta = startingCapital - w.startingCapital
+        val entry = LedgerEntry("capital-topup", LedgerType.INITIAL_CAPITAL, delta, null, clock(), "Starting virtual capital raised to ${startingCapital.toPlainString()}")
+        dao.persistTrade(w.copy(startingCapital = startingCapital, cash = w.cash + delta).toEntity(), emptyList(), emptyList(), emptyList(),
+            listOf(entry.toEntity(dao.ledger().size.toLong())))
     }
 
     suspend fun registerInstrument(info: InstrumentInfo) {

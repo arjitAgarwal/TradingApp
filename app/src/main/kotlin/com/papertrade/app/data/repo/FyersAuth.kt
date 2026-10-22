@@ -33,7 +33,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
 
-enum class FyersAuthState { NOT_SET_UP, NEEDS_LOGIN, READY }
+enum class LoginState { NOT_SET_UP, NEEDS_LOGIN, READY }
 
 /**
  * FYERS login that renews itself, so a non-technical user never handles tokens.
@@ -58,7 +58,7 @@ class FyersAuth(
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val mutex = Mutex()
     private val _state = MutableStateFlow(currentState())
-    val state: StateFlow<FyersAuthState> = _state
+    val state: StateFlow<LoginState> = _state
 
     // Values saved on the device win; otherwise fall back to what was baked in from local.properties at build time.
     private fun str(key: String, fallback: String = "") = prefs.getString(key, null)?.takeIf { it.isNotBlank() } ?: fallback.takeIf { it.isNotBlank() }
@@ -71,10 +71,10 @@ class FyersAuth(
     fun loginValidUntil(): Instant? = str("refresh_token")?.let { tokenExpiry(it) ?: Instant.ofEpochMilli(prefs.getLong("refresh_obtained", 0)).plus(Duration.ofDays(15)) }
 
     private fun currentState() = when {
-        !isSetUp() -> FyersAuthState.NOT_SET_UP
-        str("access_token") != null && !expired(str("access_token")!!, accessFallbackExpiry()) -> FyersAuthState.READY
-        str("refresh_token") != null && str("pin") != null && loginValidUntil()?.isAfter(clock()) == true -> FyersAuthState.READY
-        else -> FyersAuthState.NEEDS_LOGIN
+        !isSetUp() -> LoginState.NOT_SET_UP
+        str("access_token") != null && !expired(str("access_token")!!, accessFallbackExpiry()) -> LoginState.READY
+        str("refresh_token") != null && str("pin") != null && loginValidUntil()?.isAfter(clock()) == true -> LoginState.READY
+        else -> LoginState.NEEDS_LOGIN
     }
     private fun publish() { _state.value = currentState() }
 

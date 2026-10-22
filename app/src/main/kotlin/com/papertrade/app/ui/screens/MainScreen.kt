@@ -1,7 +1,6 @@
 package com.papertrade.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -16,10 +15,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CandlestickChart
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PieChart
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
@@ -33,12 +31,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.papertrade.app.data.market.DataMode
+import com.papertrade.app.data.market.LiveSource
 import com.papertrade.app.data.market.FeedState
 import com.papertrade.app.data.market.MarketQuote
 import com.papertrade.app.data.market.Underlying
-import com.papertrade.app.data.repo.FyersAuthState
+import com.papertrade.app.data.db.WatchlistItemEntity
+import com.papertrade.app.data.repo.LoginState
 import com.papertrade.app.ui.*
 import com.papertrade.app.ui.components.*
+import com.papertrade.app.ui.theme.Gain
+import com.papertrade.app.ui.theme.Loss
+import com.papertrade.core.Side
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.ui.graphics.Color
 
 /** One thin, sideways-scrolling line: "NIFTY 50  24,913.50 [+148.80]   SENSEX …". Tap an index to open it. */
 @Composable
@@ -67,28 +73,6 @@ fun ChangeBadge(change: java.math.BigDecimal?) {
         modifier = Modifier.background(c.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
-/** Compact one-row header. Logo and title are placeholders until the header design is decided. */
-@Composable
-fun AppHeader(onSearch: () -> Unit, onProfile: () -> Unit, paper: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
-            Icon(Icons.AutoMirrored.Filled.ShowChart, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
-        }
-        Row(Modifier.padding(start = 12.dp).weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Text("Paper Trade", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            // Real prices, simulated trades: keep that visible even when the title changes.
-            if (paper) Text("PAPER", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 8.dp).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp).testTag("paper_tag"))
-        }
-        IconButton(onSearch, Modifier.testTag("header_search")) { Icon(Icons.Default.Search, "Search") }
-        IconButton(onProfile, Modifier.testTag("open_account")) {
-            Box(Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Person, "Account", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-            }
-        }
-    }
-}
-
 @Composable
 fun MainScreen(vm: AppVM, nav: Nav) {
     // Fixed tabs, then one tab per watchlist (named by the user, like Groww), then "+" to add a watchlist.
@@ -102,16 +86,17 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     }
     val selected = tab.coerceIn(0, fixedTabs.size + lists.size - 1) // never index past the tabs while a deletion settles
     val settings by vm.settings.collectAsState(); val feed by vm.feed.collectAsState()
-    val auth by vm.fyersAuth.collectAsState()
+    val fyersAuth by vm.fyersAuth.collectAsState(); val upstoxAuth by vm.upstoxAuth.collectAsState()
+    val upstox = settings.liveSource == LiveSource.UPSTOX
+    val auth = if (upstox) upstoxAuth else fyersAuth; val broker = settings.liveSource.displayName
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
         Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
-            AppHeader(onSearch = { tab = 0 }, onProfile = nav.account, paper = settings.dataMode == DataMode.LIVE_PROVIDER)
             MarketTicker(vm, nav.index)
-            if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != FyersAuthState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth == FyersAuthState.NEEDS_LOGIN) nav.fyersLogin() else nav.account() }.testTag("fyers_login_banner")) {
-                Text(if (auth == FyersAuthState.NEEDS_LOGIN) "FYERS login needed for live prices. Tap here to log in." else "FYERS is not set up yet. Tap to open settings.",
+            if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
+                Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
                     color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
             }
             if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
@@ -125,10 +110,10 @@ fun MainScreen(vm: AppVM, nav: Nav) {
                 Tab(false, { newList = true }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, icon = { Icon(Icons.Default.Add, "New watchlist") }, modifier = Modifier.testTag("tab_add_watchlist"))
             }
         }
-    }, bottomBar = { BottomBar(onFno = { nav.chain(Underlying.NIFTY) }, onUnavailable = { vm.messages.tryEmit("$it isn't part of this paper-trading app") }) }) { pad ->
+    }, bottomBar = { BottomBar(onFno = { nav.chain(Underlying.NIFTY) }, onAccount = nav.account, onUnavailable = { vm.messages.tryEmit("$it isn't part of this paper-trading app") }) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (selected) {
-                0 -> ExploreScreen(vm, nav); 1 -> HoldingsScreen(vm, nav); 2 -> PositionsScreen(vm); 3 -> OrdersScreen(vm)
+                0 -> ExploreScreen(vm, nav); 1 -> HoldingsScreen(vm, nav); 2 -> PositionsScreen(vm, nav); 3 -> OrdersScreen(vm)
                 else -> lists.getOrNull(selected - fixedTabs.size)?.let { WatchlistScreen(vm, nav, it, canDelete = lists.size > 1) }
             }
         }
@@ -141,7 +126,10 @@ fun MainScreen(vm: AppVM, nav: Nav) {
 fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watchlist, canDelete: Boolean) {
     val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
     var renaming by remember { mutableStateOf(false) }; var confirmDelete by remember { mutableStateOf(false) }
+    var action by remember { mutableStateOf<WatchlistItemEntity?>(null) }
+    val sparks by vm.sparks.collectAsState()
     DisposableEffect(list.id, list.items.size) { vm.subscribe("watchlist", list.items.map { it.symbol }.toSet()); onDispose { vm.unsubscribe("watchlist") } }
+    LaunchedEffect(list.id, list.items.size) { while (true) { vm.loadSparks(list.items.map { it.symbol }); kotlinx.coroutines.delay(60_000) } }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${list.items.size} ${if (list.items.size == 1) "item" else "items"}", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -150,18 +138,85 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
         }
         if (list.items.isEmpty()) EmptyState(Icons.Default.StarBorder, "This watchlist is empty", "Search in Explore and tap ☆ to add a stock.")
         else LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
-            items(list.items, key = { it.symbol }) { item ->
-                StockRow(item.symbol, item.name, quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()), true,
-                    onClick = { if (item.symbol.endsWith("-EQ")) nav.stock(item.symbol) else nav.contract(item.symbol) },
-                    onToggle = { vm.removeFromWatchlist(list.id, item.symbol) })
+            items(list.items, key = { it.symbol }) { item -> Box(Modifier.testTag("wl_item_${item.symbol}")) {
+                WatchRow(Fmt.labelParts(item.symbol, vm.info(item.symbol)), quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()),
+                    sparks[item.symbol].orEmpty()) { action = item } }
             }
         }
     }
+    action?.let { item -> QuickActionSheet(vm, item.symbol, quotes[item.symbol], { action = null },
+        onOpen = { action = null; if (item.symbol.endsWith("-EQ")) nav.stock(item.symbol) else nav.contract(item.symbol) },
+        onTrade = { side -> action = null; nav.order(item.symbol, side) },
+        onRemove = { action = null; vm.removeFromWatchlist(list.id, item.symbol) }) }
     if (renaming) NameDialog("Rename watchlist", list.name) { name -> renaming = false; name?.let { vm.renameWatchlist(list.id, it) } }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete \"${list.name}\"?") },
         text = { Text("The watchlist and its ${list.items.size} items will be removed.") },
         confirmButton = { TextButton({ confirmDelete = false; vm.deleteWatchlist(list.id) }) { Text("Delete") } },
         dismissButton = { TextButton({ confirmDelete = false }) { Text("Cancel") } })
+}
+
+/**
+ * Groww watchlist row: name in bold over "Call"/"Put"/"Fut" (equities: just the ticker), today's mini chart in a
+ * fixed column, price over change. The price column has a fixed width so the charts line up down the list.
+ */
+@Composable
+private fun WatchRow(label: Pair<String, String?>, q: MarketQuote?, f: Freshness, closes: List<java.math.BigDecimal>, onClick: () -> Unit) {
+    val fresh = f == Freshness.LIVE || f == Freshness.DEMO
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(label.first, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                label.second?.let { Text(it, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp)) }
+            }
+            Sparkline(closes, q?.ltp, q?.prevClose, q?.change, Modifier.padding(horizontal = 8.dp).size(width = 52.dp, height = 20.dp))
+            Column(Modifier.width(118.dp), horizontalAlignment = Alignment.End) {
+                Text(Fmt.rupee(q?.ltp), fontSize = 15.sp, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(Fmt.changeLine(q?.change, q?.changePct), fontSize = 13.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant),
+                    maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+/** Groww-style sheet shown on tapping a watchlist row: name card (tap to open full details), Set alert, Remove, Sell / Buy. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose: () -> Unit, onOpen: () -> Unit, onTrade: (Side) -> Unit, onRemove: () -> Unit) {
+    var info by remember(symbol) { mutableStateOf(vm.info(symbol)) }
+    LaunchedEffect(symbol) { if (info == null && symbol.endsWith("-EQ")) vm.equityInfo(symbol).onSuccess { info = it; vm.register(it) } }
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).testTag("quick_actions")) {
+            OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag("quick_open"), shape = RoundedCornerShape(16.dp)) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(Fmt.label(symbol, info), fontSize = 17.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f, fill = false))
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Open details")
+                    Spacer(Modifier.width(12.dp))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(Fmt.rupee(q?.ltp), fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", fontSize = 13.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant))
+                    }
+                }
+            }
+            // Alerts aren't built yet; the row is here so the sheet matches the target layout.
+            Row(Modifier.fillMaxWidth().clickable { vm.messages.tryEmit("Price alerts are coming soon") }.padding(vertical = 16.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.NotificationsNone, null); Spacer(Modifier.width(16.dp)); Text("Set alert", fontSize = 16.sp)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            // Rows have no star (as in Groww), so removal lives here.
+            Row(Modifier.fillMaxWidth().clickable(onClick = onRemove).padding(vertical = 16.dp, horizontal = 4.dp).testTag("quick_remove"), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.DeleteOutline, null); Spacer(Modifier.width(16.dp)); Text("Remove from watchlist", fontSize = 16.sp)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            if (info == null) Text("Contract details unavailable, so this can't be traded right now.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Button({ onTrade(Side.SELL) }, Modifier.weight(1f).height(52.dp).testTag("btn_sell"), enabled = info != null, shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Loss, contentColor = Color.White)) { Text("Sell", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+                Button({ onTrade(Side.BUY) }, Modifier.weight(1f).height(52.dp).testTag("btn_buy"), enabled = info != null, shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gain, contentColor = Color.White)) { Text("Buy", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+            }
+        }
+    }
 }
 
 /** Text prompt for a watchlist name; calls back with the name, or null if cancelled. */
@@ -174,12 +229,12 @@ private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit
         dismissButton = { TextButton({ onDone(null) }) { Text("Cancel") } })
 }
 
-/** Stocks is this screen; F&O opens the NIFTY option chain; Mutual Funds and Loans don't exist here, so they only explain that. */
+/** Stocks is this screen; F&O opens the NIFTY option chain; Mutual Funds doesn't exist here, so it only explains that; Loans opens Account (no loans in a paper app). */
 @Composable
-private fun BottomBar(onFno: () -> Unit, onUnavailable: (String) -> Unit) {
+private fun BottomBar(onFno: () -> Unit, onAccount: () -> Unit, onUnavailable: (String) -> Unit) {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
         listOf(Triple("Stocks", Icons.AutoMirrored.Filled.ShowChart, {}), Triple("F&O", Icons.Default.CandlestickChart, onFno),
-            Triple("Mutual Funds", Icons.Default.PieChart, { onUnavailable("Mutual Funds") }), Triple("Loans", Icons.Default.Payments, { onUnavailable("Loans") }))
+            Triple("Mutual Funds", Icons.Default.PieChart, { onUnavailable("Mutual Funds") }), Triple("Loans", Icons.Default.Payments, onAccount))
             .forEachIndexed { i, (label, icon, onClick) ->
                 NavigationBarItem(selected = i == 0, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label, fontSize = 11.sp, maxLines = 1) },
                     modifier = Modifier.testTag("bottom_$label"))
@@ -196,7 +251,8 @@ private fun feedMessage(s: FeedState, m: String?) = when (s) {
 }
 
 class Nav(val index: (Underlying) -> Unit, val stock: (String) -> Unit, val chain: (Underlying) -> Unit, val futures: (Underlying) -> Unit,
-          val contract: (String) -> Unit, val account: () -> Unit, val back: () -> Unit, val fyersLogin: () -> Unit = {})
+          val contract: (String) -> Unit, val account: () -> Unit, val back: () -> Unit, val fyersLogin: () -> Unit = {}, val upstoxLogin: () -> Unit = {},
+          val order: (String, Side) -> Unit = { _, _ -> })
 
 @Composable
 fun ExploreScreen(vm: AppVM, nav: Nav) {
