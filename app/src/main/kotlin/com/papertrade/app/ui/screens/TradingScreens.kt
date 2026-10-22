@@ -208,7 +208,7 @@ private fun PositionRow(vm: AppVM, p: Position, pnl: BigDecimal, ltp: BigDecimal
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp).testTag("pos_${p.instrumentId}"),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Delivery · ${p.instrumentId.substringBefore(':')}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
+            Text((if (p.isOpen) "" else "Closed · ") + "Delivery · ${p.instrumentId.substringBefore(':')}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
             val (chip, chipColor) = if (p.isOpen) ((if (units > 0) "+" else "") + units) to ChipBlue else "B" to Gain
             Row(Modifier.background(chipColor.copy(alpha = 0.1f), RoundedCornerShape(50)).padding(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically) {
