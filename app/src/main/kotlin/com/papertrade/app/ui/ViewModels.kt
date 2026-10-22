@@ -62,7 +62,7 @@ class AppVM(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch {
             c.contracts[info.symbol] = info
             val r = c.trading.place(info, OrderRequest(info.symbol, side, type, qty, limit), quotes.value[info.symbol])
-            messages.tryEmit(r.error?.let { "Order rejected: $it" } ?: "${side.name} order ${r.order?.status?.name?.lowercase()?.replace('_', ' ')} (simulated)")
+            messages.tryEmit(r.error?.let { "Order rejected: $it" } ?: "${side.name} order ${r.order?.status?.name?.lowercase()?.replace('_', ' ')}")
             onDone(r)
         }
     }
