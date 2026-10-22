@@ -40,6 +40,44 @@ internal fun pollingQuoteStream(
     }
 }
 
+/**
+ * Live prices from a provider's WebSocket while the market is open, with REST as the safety net. [session] opens one
+ * socket for [symbols] and emits quotes until it closes or fails; REST polling then covers a retry window (15 s, doubling
+ * per failure up to 5 min) before the socket is tried again. While the market is closed there is nothing to stream, so one
+ * REST snapshot a minute is enough.
+ */
+internal fun streamingQuoteStream(
+    symbols: Set<String>,
+    pollIntervalMs: () -> Long,
+    clock: () -> Instant,
+    status: MutableStateFlow<FeedStatus>,
+    fetch: suspend (List<String>) -> Result<List<MarketQuote>>,
+    session: (Set<String>) -> Flow<MarketQuote>,
+): Flow<MarketQuote> = flow {
+    if (symbols.isEmpty()) return@flow
+    var retryMs = STREAM_RETRY_MS
+    while (true) {
+        if (!MarketHours.isLikelyOpen(clock())) {
+            fetch(symbols.toList()).onSuccess { it.forEach { q -> emit(q) } }
+            delay(60_000); continue
+        }
+        try {
+            session(symbols).collect { emit(it); retryMs = STREAM_RETRY_MS }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+            val k = (e as? ProviderException)?.kind
+            status.value = FeedStatus(if (k == ProviderException.Kind.RATE_LIMIT) FeedState.ERROR else FeedState.RECONNECTING,
+                "Live stream interrupted (${e.message}); using regular updates for now", status.value.lastSuccess)
+            if (k == ProviderException.Kind.NOT_CONFIGURED || k == ProviderException.Kind.AUTH) { delay(30_000); continue }
+        }
+        // Socket closed or failed: poll REST until the next attempt, backing off so a broken socket isn't hammered.
+        val until = clock().plusMillis(retryMs)
+        while (clock() < until) { fetch(symbols.toList()).onSuccess { it.forEach { q -> emit(q) } }; delay(pollIntervalMs()) }
+        retryMs = (retryMs * 2).coerceAtMost(5 * 60_000L)
+    }
+}
+
+private const val STREAM_RETRY_MS = 15_000L
+
 /** TEMP rate-limit debugging: one logcat line per provider request (endpoint, status, running counts). Never logs auth headers. */
 internal class HttpDebugLog(private val tag: String) {
     private val sentAt = java.util.concurrent.ConcurrentLinkedDeque<Long>(); private val sentTotal = java.util.concurrent.atomic.AtomicInteger()

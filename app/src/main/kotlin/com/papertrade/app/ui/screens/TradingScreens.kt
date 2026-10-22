@@ -170,8 +170,7 @@ private fun PositionRow(vm: AppVM, p: Position, pnl: BigDecimal, ltp: BigDecimal
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(if (p.isOpen) "Delivery" else "Delivery · Closed", fontSize = 13.sp, color = dim)
                 Text(Fmt.label(p.instrumentId, info), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("Mkt ${Fmt.rupee(ltp)}", fontSize = 13.sp, color = dim)
-            }
+                Text("Mkt ${Fmt.rupee(ltp)}", fontSize = 13.sp, color = dim)            }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text((if (units > 0) "+" else "") + units, fontSize = 13.sp, color = dim)
                 Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
@@ -268,6 +267,13 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
                 }, "fyers", nav.fyersLogin, vm::logoutFyers,
                     "From https://myapi.fyers.in/dashboard/. Only a hash of the secret is stored. The redirect URI must exactly match the one registered for the FYERS app.",
                     "FYERS app id", vm::setupFyers)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(settings.fyersPrime, { vm.saveSettings(settings.copy(fyersPrime = it)) }, Modifier.testTag("fyers_prime"))
+                    Text("  Premium (Prime) plan")
+                }
+                Text(if (settings.fyersPrime) "Higher FYERS limits: updates every second if the live stream drops, up to 5,000 contracts streamed."
+                    else "Free Standard plan: 5,000 requests a day, so the app streams prices and only falls back to updates every 3 seconds. Turn on only if the account has Prime.",
+                    fontSize = 12.sp)
             } }
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 BrokerLogin("Upstox", upstoxAuth, when (upstoxAuth) {

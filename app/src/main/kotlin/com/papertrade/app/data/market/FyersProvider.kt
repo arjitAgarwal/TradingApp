@@ -5,8 +5,11 @@ import com.papertrade.core.OptionType
 import com.papertrade.core.QuoteSource
 import com.papertrade.core.Segment
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
@@ -20,8 +23,15 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
+import okio.ByteString.Companion.toByteString
 import java.io.File
 import java.io.IOException
 import java.math.BigDecimal
@@ -51,27 +61,37 @@ interface FyersCredentials {
  * AUTH: [com.papertrade.app.data.repo.FyersAuth] supplies the app id and a daily access token, renewing it automatically
  * from a 15-day refresh token. A rejected token triggers one renewal + retry before the error surfaces.
  *
- * LIMITS (Standard plan): data REST 5/s, 50/min, 5000/day; exceeding the per-minute limit >3 times/day blocks the account for
- * the day. [SlidingWindowLimiter] keeps us under a conservative budget. WebSocket NOT implemented: quoteStream polls.
+ * LIMITS: see [prime]. Prices stream over FYERS' Data Socket ([FyersHsm]), which doesn't use the REST quota; REST polling
+ * is only the fallback while the socket is down.
  */
 class FyersProvider(
     private val credentials: FyersCredentials,
     private val cacheDir: File,
     private val http: OkHttpClient = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build(),
     private val clock: () -> Instant = { Instant.now() },
-    // FYERS Standard plan data APIs: 5/s, 50/min, 5,000/day, and a day-long block after 3 per-minute breaches. 1s polling would break it.
-    private val pollIntervalMs: Long = 3_000,
     private val dataBase: String = "https://api-t1.fyers.in/data",
     private val masterBase: String = "https://public.fyers.in/sym_details",
 ) : MarketDataProvider {
     override val id = "fyers"
-    override val displayName = "FYERS API v3 (polled REST)"
+    override val displayName = "FYERS API v3 (live stream)"
     override val mode = DataMode.LIVE_PROVIDER
     private val status = MutableStateFlow(FeedStatus(FeedState.NOT_CONFIGURED, "Log in to FYERS in Account → Market data"))
     override val feedStatus: StateFlow<FeedStatus> = status
 
+    /**
+     * Which FYERS plan the account is on (set from Account → FYERS). Data API limits differ a lot:
+     *   Standard: 5/s, 50/min, 5,000/day; socket 100 symbols.   Prime: 10/s, 500/min, 5,00,000/day; socket 5,000 symbols.
+     * Exceeding the per-minute limit more than 3 times a day blocks the account for the day, so each limiter stays well under.
+     */
+    @Volatile var prime: Boolean = false
+    private val standardLimiter = SlidingWindowLimiter(maxPerSecond = 4, maxPerMinute = 40, clock = { System.currentTimeMillis() })
+    private val primeLimiter = SlidingWindowLimiter(maxPerSecond = 8, maxPerMinute = 300, clock = { System.currentTimeMillis() })
+    private val limiter get() = if (prime) primeLimiter else standardLimiter
+    /** REST polling interval (fallback only while streaming works): 1 s fits Prime; Standard's 50/min needs 3 s. */
+    private val pollIntervalMs get() = if (prime) 1_000L else 3_000L
+    private val maxStreamSymbols get() = if (prime) 5_000 else 100
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
-    private val limiter = SlidingWindowLimiter(maxPerSecond = 4, maxPerMinute = 40, clock = { System.currentTimeMillis() })
     private val dateFmt = DateTimeFormatter.ofPattern("dd-MM-yyyy")
 
     private fun JsonElement?.str() = (this as? JsonPrimitive)?.content
@@ -114,7 +134,7 @@ class FyersProvider(
                         else -> throw ProviderException("FYERS: $msg (code $code)", ProviderException.Kind.OTHER)
                     }
                 }
-                status.value = FeedStatus(FeedState.CONNECTED, "Polling every ${pollIntervalMs / 1000}s", clock())
+                if (!status.value.message.orEmpty().startsWith("Streaming")) status.value = FeedStatus(FeedState.CONNECTED, "Polling every ${pollIntervalMs / 1000}s", clock())
                 obj
             }
         } catch (e: IOException) {
@@ -131,7 +151,7 @@ class FyersProvider(
     private fun rateLimited(daily: Boolean): ProviderException {
         val now = clock()
         blocked = if (daily) now.atZone(MarketHours.IST).toLocalDate().plusDays(1).atStartOfDay(MarketHours.IST).toInstant() to
-            "FYERS daily limit reached (5,000 requests/day on the free Standard plan). Live data resumes tomorrow."
+            (if (prime) "FYERS daily limit reached (5,00,000 requests/day on Prime)." else "FYERS daily limit reached (5,000 requests/day on the free Standard plan).") + " Live data resumes tomorrow."
         else now.plusSeconds(60) to "FYERS per-minute request limit hit. Pausing live data for 1 minute."
         return ProviderException(blocked!!.second, ProviderException.Kind.RATE_LIMIT)
     }
@@ -279,7 +299,95 @@ class FyersProvider(
         }
     }
 
-    override fun quoteStream(symbols: Set<String>): Flow<MarketQuote> = pollingQuoteStream(symbols, pollIntervalMs, clock, status, ::quotes)
+    /**
+     * Live prices over FYERS' Data Socket while the market is open; see [streamingQuoteStream] for the REST fallback.
+     * The socket doesn't count against the REST quota, which is what makes the Standard plan's 5,000/day last a full session.
+     */
+    override fun quoteStream(symbols: Set<String>): Flow<MarketQuote> = streamingQuoteStream(symbols, { pollIntervalMs }, clock, status, ::quotes) { syms ->
+        flow {
+            val token = credentials.accessToken() ?: throw ProviderException("FYERS login needed", ProviderException.Kind.NOT_CONFIGURED)
+            val key = FyersHsm.hsmKey(token) ?: throw ProviderException("FYERS login has no live-feed key; log in again", ProviderException.Kind.AUTH)
+            val symOf = topics(syms.toList()).entries.take(maxStreamSymbols).associate { (sym, topic) -> topic to sym }
+            if (symOf.isEmpty()) return@flow
+            val last = HashMap<String, MarketQuote>()
+            socket(key, symOf.keys.toList()).collect { u ->
+                val sym = symOf[u.topic] ?: return@collect
+                val now = clock()
+                merge(last[sym], sym, u, now)?.let { q -> last[sym] = q; emit(q) }
+            }
+        }
+    }
+
+    /** One socket connection: auth, full mode, subscribe, then decoded updates until it closes. */
+    private fun socket(hsmKey: String, topics: List<String>): Flow<FyersHsmDecoder.Update> = callbackFlow {
+        val decoder = FyersHsmDecoder()
+        val ws = streamHttp.newWebSocket(Request.Builder().url(FyersHsm.URL).build(), object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                webSocket.send(FyersHsm.auth(hsmKey).toByteString())
+                webSocket.send(FyersHsm.fullMode().toByteString())
+                topics.chunked(1500).forEach { webSocket.send(FyersHsm.subscribe(it).toByteString()) }
+            }
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                when (val e = runCatching { decoder.decode(bytes.toByteArray()) }.getOrElse { debug.log("ws decode", 0, it.toString(), true); return }) {
+                    is FyersHsmDecoder.Event.Auth -> {
+                        debug.log("ws auth (${topics.size} topics)", if (e.ok) 200 else 401, "", !e.ok)
+                        if (!e.ok) close(ProviderException("FYERS refused the live-feed login; log in again", ProviderException.Kind.AUTH))
+                    }
+                    is FyersHsmDecoder.Event.Data -> {
+                        e.ack?.let { webSocket.send(it.toByteString()) }
+                        if (e.updates.isNotEmpty()) status.value = FeedStatus(FeedState.CONNECTED, "Streaming live", clock())
+                        e.updates.forEach { trySend(it) }
+                    }
+                    is FyersHsmDecoder.Event.ServerMessage -> debug.log("ws message", e.code, e.message, true)
+                    FyersHsmDecoder.Event.Other -> {}
+                }
+            }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { close(IOException("FYERS socket failed: ${t.message ?: response?.code}", t)) }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { close() }
+        })
+        val pinger = launch { while (true) { delay(10_000); ws.send(FyersHsm.PING.toByteString()) } }
+        awaitClose { pinger.cancel(); ws.close(1000, null) }
+    }
+
+    private fun merge(prev: MarketQuote?, symbol: String, u: FyersHsmDecoder.Update, now: Instant): MarketQuote? {
+        fun d(v: Double?) = v?.let { BigDecimal.valueOf(it).setScale(2, RoundingMode.HALF_UP) }
+        val ltp = d(u.ltp) ?: prev?.ltp ?: return null
+        val close = d(u.prevClose)?.takeIf { it.signum() > 0 } ?: prev?.prevClose
+        val ch = close?.let { ltp - it }
+        val pct = if (ch != null && close.signum() != 0) ch.multiply(BigDecimal(100)).divide(close, 2, RoundingMode.HALF_UP) else null
+        return MarketQuote(symbol, ltp, d(u.open) ?: prev?.open, d(u.high) ?: prev?.high, d(u.low) ?: prev?.low, close, ch, pct,
+            d(u.bid) ?: prev?.bid, d(u.ask) ?: prev?.ask, u.volume ?: prev?.volume, u.oi ?: prev?.openInterest, null, now, sourceNow(now))
+    }
+
+    /** Symbol -> HSM topic. Looked up once per symbol via FYERS' symbol-token API (as the official SDK does) and remembered. */
+    private val topicCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private suspend fun topics(symbols: List<String>): Map<String, String> {
+        val missing = symbols.filter { !topicCache.containsKey(it) }
+        missing.chunked(500).forEach { chunk -> symbolTokens(chunk).forEach { (sym, fyToken) -> FyersHsm.topic(sym, fyToken)?.let { topicCache[sym] = it } } }
+        return symbols.mapNotNull { s -> topicCache[s]?.let { s to it } }.toMap()
+    }
+
+    private suspend fun symbolTokens(symbols: List<String>): Map<String, String> = withContext(Dispatchers.IO) {
+        val token = credentials.accessToken() ?: throw ProviderException("FYERS login needed", ProviderException.Kind.NOT_CONFIGURED)
+        blocked?.let { (until, msg) -> if (clock() < until) throw ProviderException(msg, ProviderException.Kind.RATE_LIMIT) }
+        limiter.acquire()
+        val body = """{"symbols":[${symbols.joinToString(",") { "\"$it\"" }}]}""".toRequestBody("application/json".toMediaType())
+        // The SDK sends the bare token (no "appId:") to this endpoint.
+        val req = Request.Builder().url("$dataBase/symbol-token").post(body).header("Authorization", token.substringAfter(':')).build()
+        try {
+            http.newCall(req).execute().use { resp ->
+                val text = resp.body?.string().orEmpty(); debugLog("$dataBase/symbol-token", resp.code, text)
+                if (resp.code == 429) throw rateLimited(daily = text.contains("/day"))
+                val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrElse { throw ProviderException("Unparseable FYERS symbol-token response (HTTP ${resp.code})") }
+                if (obj["s"].str() != "ok") throw ProviderException("FYERS symbol-token: ${obj["message"].str() ?: "HTTP ${resp.code}"}",
+                    if (resp.code == 401 || resp.code == 403) ProviderException.Kind.AUTH else ProviderException.Kind.OTHER)
+                (obj["validSymbol"] as? JsonObject).orEmpty().mapNotNull { (k, v) -> v.str()?.let { k to it } }.toMap()
+            }
+        } catch (e: IOException) { throw ProviderException("Network error: ${e.message}", ProviderException.Kind.NETWORK, e) }
+    }
+
+    /** Sockets stay open for hours: no read timeout; FYERS' own ping (every 10 s) keeps the connection alive. */
+    private val streamHttp by lazy { http.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).build() }
 }
 
 /** Keeps request rate under provider limits (blocks rather than risk an account block). */

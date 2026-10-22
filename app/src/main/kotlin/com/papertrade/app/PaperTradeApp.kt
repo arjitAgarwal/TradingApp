@@ -32,6 +32,7 @@ class AppContainer(app: Application, providerOverride: ((DataMode, LiveSource) -
     init {
         scope.launch { trading.init(); watchlists.ensureDefault() }
         scope.launch { runCatching { fyersAuth.accessToken() } } // renew at launch so the login prompt (if any) shows straight away
+        scope.launch { settingsStore.settings.collect { fyers.prime = it.fyersPrime } }
     }
 }
 

@@ -5,7 +5,10 @@ import com.papertrade.core.OptionType
 import com.papertrade.core.QuoteSource
 import com.papertrade.core.Segment
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -25,6 +28,11 @@ import kotlinx.serialization.json.jsonObject
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
+import okio.ByteString.Companion.toByteString
 import java.io.File
 import java.io.IOException
 import java.math.BigDecimal
@@ -67,7 +75,7 @@ class UpstoxProvider(
     private val assetsBase: String = "https://assets.upstox.com/market-quote/instruments/exchange",
 ) : MarketDataProvider {
     override val id = "upstox"
-    override val displayName = "Upstox API (polled REST)"
+    override val displayName = "Upstox API (live stream)"
     override val mode = DataMode.LIVE_PROVIDER
     private val status = MutableStateFlow(FeedStatus(FeedState.NOT_CONFIGURED, "Log in to Upstox in Account → Market data"))
     override val feedStatus: StateFlow<FeedStatus> = status
@@ -280,7 +288,47 @@ class UpstoxProvider(
             r[4].dec() ?: return@mapNotNull null, r[5].lng() ?: 0L)
     }
 
-    override fun quoteStream(symbols: Set<String>): Flow<MarketQuote> = pollingQuoteStream(symbols, pollIntervalMs, clock, status, ::quotes)
+    /** Live prices over Upstox's V3 WebSocket while the market is open; see [streamingQuoteStream] for the REST fallback. */
+    override fun quoteStream(symbols: Set<String>): Flow<MarketQuote> = streamingQuoteStream(symbols, { pollIntervalMs }, clock, status, ::quotes) { syms ->
+        flow {
+            val keyOf = (if (syms.all { s -> INDEX_KEYS.any { it.first.indexSymbol == s } }) INDEX_KEYS.associate { it.first.indexSymbol to it.second } else master().keyOf)
+            val symOf = syms.mapNotNull { s -> keyOf[s]?.let { it to s } }.toMap()
+            if (symOf.isEmpty()) return@flow
+            val url = getJson("/v3/feed/market-data-feed/authorize")["data"].obj()?.get("authorized_redirect_uri").str()
+                ?: throw ProviderException("Upstox did not return a live-feed address")
+            val last = HashMap<String, MarketQuote>()
+            streamSession(url, symOf.keys).collect { ticks ->
+                val now = clock(); val src = sourceNow(now)
+                ticks.forEach { (key, t) ->
+                    val sym = symOf[key] ?: return@forEach
+                    UpstoxFeed.merge(last[sym], sym, t, now, src)?.let { q -> last[sym] = q; emit(q) }
+                }
+            }
+        }
+    }
+
+    /** One WebSocket connection: subscribes to [keys] and emits each decoded message. Completes when the server closes it. */
+    private fun streamSession(url: String, keys: Collection<String>): Flow<Map<String, UpstoxFeed.Tick>> = callbackFlow {
+        val ws = streamHttp.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                keys.chunked(MAX_KEYS_PER_SUB).forEach { webSocket.send(UpstoxFeed.subscribeRequest(it).encodeToByteArray().toByteString()) }
+                status.value = FeedStatus(FeedState.CONNECTED, "Streaming live", clock())
+            }
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                val ticks = runCatching { UpstoxFeed.decode(bytes.toByteArray()) }.getOrElse { debug.log("ws decode", 0, it.message ?: "", true); return }
+                if (ticks.isNotEmpty()) { status.value = FeedStatus(FeedState.CONNECTED, "Streaming live", clock()); trySend(ticks) }
+            }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (response?.code == 401) close(ProviderException("Upstox login expired", ProviderException.Kind.AUTH))
+                else close(IOException("socket failed: ${t.message ?: response?.code}", t))
+            }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { close() }
+        })
+        awaitClose { ws.close(1000, null) }
+    }
+
+    /** Sockets stay open for hours: no read timeout, and pings keep idle connections alive through NATs. */
+    private val streamHttp by lazy { http.newBuilder().readTimeout(0, TimeUnit.MILLISECONDS).pingInterval(20, TimeUnit.SECONDS).build() }
 
     private fun pct(ch: BigDecimal?, base: BigDecimal?) = if (ch == null || base == null || base.signum() == 0) null else ch.multiply(BigDecimal(100)).divide(base, 2, RoundingMode.HALF_UP)
     private fun indexKey(u: Underlying) = INDEX_KEYS.first { it.first == u }.second
@@ -288,6 +336,7 @@ class UpstoxProvider(
 
     companion object {
         private const val RATE_MSG = "Upstox request limit hit. Pausing live data for 1 minute."
+        private const val MAX_KEYS_PER_SUB = 100
         private val INDEX_KEYS = listOf(Underlying.NIFTY to "NSE_INDEX|Nifty 50", Underlying.SENSEX to "BSE_INDEX|SENSEX")
         private val NAME_DATE = DateTimeFormatter.ofPattern("dd MMM yy", Locale.ENGLISH)
         private val MONTH = DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH)
