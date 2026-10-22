@@ -139,7 +139,7 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
         if (list.items.isEmpty()) EmptyState(Icons.Default.StarBorder, "This watchlist is empty", "Search in Explore and tap ☆ to add a stock.")
         else LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
             items(list.items, key = { it.symbol }) { item -> Box(Modifier.testTag("wl_item_${item.symbol}")) {
-                WatchRow(Fmt.label(item.symbol, vm.info(item.symbol)), quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()),
+                WatchRow(Fmt.labelParts(item.symbol, vm.info(item.symbol)), quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()),
                     sparks[item.symbol].orEmpty()) { action = item } }
             }
         }
@@ -156,15 +156,18 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
 }
 
 /**
- * Groww watchlist row: one-line name, today's mini chart in a fixed column, price over change.
- * The price column has a fixed width so the charts line up down the list.
+ * Groww watchlist row: name in bold over "Call"/"Put"/"Fut" (equities: just the ticker), today's mini chart in a
+ * fixed column, price over change. The price column has a fixed width so the charts line up down the list.
  */
 @Composable
-private fun WatchRow(title: String, q: MarketQuote?, f: Freshness, closes: List<java.math.BigDecimal>, onClick: () -> Unit) {
+private fun WatchRow(label: Pair<String, String?>, q: MarketQuote?, f: Freshness, closes: List<java.math.BigDecimal>, onClick: () -> Unit) {
     val fresh = f == Freshness.LIVE || f == Freshness.DEMO
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 18.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(title, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(label.first, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                label.second?.let { Text(it, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp)) }
+            }
             Sparkline(closes, q?.ltp, q?.prevClose, q?.change, Modifier.padding(horizontal = 8.dp).size(width = 52.dp, height = 20.dp))
             Column(Modifier.width(118.dp), horizontalAlignment = Alignment.End) {
                 Text(Fmt.rupee(q?.ltp), fontSize = 15.sp, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)

@@ -27,12 +27,16 @@ object Fmt {
     fun time(i: Instant?) = i?.let { timeFmt.format(it) + " IST" } ?: "—"
     private val expiryFmt = DateTimeFormatter.ofPattern("dd MMM", Locale.ENGLISH)
     /** Groww-style label: "NIFTY 19 Oct 22650 Call", "RELIANCE 27 Oct Fut", or the bare ticker for equities. */
-    fun label(symbol: String, info: com.papertrade.app.data.market.InstrumentInfo?): String {
-        val e = info?.expiry ?: return symbol.substringAfter(':').removeSuffix("-EQ")
+    fun label(symbol: String, info: com.papertrade.app.data.market.InstrumentInfo?): String =
+        labelParts(symbol, info).let { (main, kind) -> if (kind == null) main else "$main $kind" }
+    /** The label split as Groww's watchlist shows it: ("NIFTY 27 Oct 22800", "Call"); kind is null for equities. */
+    fun labelParts(symbol: String, info: com.papertrade.app.data.market.InstrumentInfo?): Pair<String, String?> {
+        val e = info?.expiry ?: return symbol.substringAfter(':').removeSuffix("-EQ") to null
         val u = info.underlying ?: symbol.substringAfter(':')
         return when (info.optionType) {
-            null -> "$u ${expiryFmt.format(e)} Fut"
-            else -> "$u ${expiryFmt.format(e)} ${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${if (info.optionType == com.papertrade.core.OptionType.CE) "Call" else "Put"}"
+            null -> "$u ${expiryFmt.format(e)}" to "Fut"
+            else -> "$u ${expiryFmt.format(e)} ${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""}".trimEnd() to
+                if (info.optionType == com.papertrade.core.OptionType.CE) "Call" else "Put"
         }
     }
     /** Groww's watchlist change line: signed amount, unsigned percent, e.g. "-133.70 (51.83%)". */

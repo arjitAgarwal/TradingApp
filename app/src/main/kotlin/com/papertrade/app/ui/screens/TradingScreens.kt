@@ -12,7 +12,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.CandlestickChart
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.outlined.ViewAgenda
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Inventory2
@@ -111,48 +120,73 @@ private fun OrderRow(vm: AppVM, o: Order, onClick: () -> Unit) {
     }
 }
 
+private enum class PosFilter(val label: String) { ALL("All positions"), OPEN("Open"), CLOSED("Closed") }
+
 /**
- * Groww-style positions: a "Total returns" card with Exit all / Set Safe Exit, then one flat row per F&O position.
- * Closed (booked) positions stay in the list, greyed. Tapping a row opens Exit / Add more.
+ * Groww-style positions: a "TOTAL P&L" card with Set Safe Exit, a toolbar (filter; chart, Exit all, layout), then one
+ * flat row per F&O position. Closed (booked) positions stay in the list, greyed, below a divider. Tapping a row opens
+ * Exit / Add more.
  */
 @Composable
 fun PositionsScreen(vm: AppVM, nav: Nav) {
     val acc by vm.account.collectAsState(); val val_ by vm.valuation.collectAsState(); val quotes by vm.quotes.collectAsState()
-    val positions = acc?.positions?.values?.filter { p -> vm.info(p.instrumentId)?.segment != Segment.EQUITY && !p.instrumentId.endsWith("-EQ") }
-        ?.sortedByDescending { it.isOpen } ?: emptyList()
+    val all = acc?.positions?.values?.filter { p -> vm.info(p.instrumentId)?.segment != Segment.EQUITY && !p.instrumentId.endsWith("-EQ") } ?: emptyList()
     var sel by remember { mutableStateOf<Position?>(null) }; var confirmExitAll by remember { mutableStateOf(false) }
-    if (positions.isEmpty()) { EmptyState(Icons.Outlined.Insights, "No positions", "Futures and options you buy show up here."); return }
-    val pnl = positions.associate { p -> p.instrumentId to (val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.netPnl ?: (p.realizedGross - p.charges)) }
-    val open = positions.filter { it.isOpen }
+    var filter by rememberSaveable { mutableStateOf(PosFilter.ALL) }; var filterMenu by remember { mutableStateOf(false) }
+    if (all.isEmpty()) { EmptyState(Icons.Outlined.Insights, "No positions", "Futures and options you buy show up here."); return }
+    val pnl = all.associate { p -> p.instrumentId to (val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.netPnl ?: (p.realizedGross - p.charges)) }
+    val open = all.filter { it.isOpen }; val closed = all.filterNot { it.isOpen }
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             val total = pnl.values.fold(BigDecimal.ZERO, BigDecimal::add)
-            OutlinedCard(Modifier.fillMaxWidth().padding(12.dp), shape = RoundedCornerShape(12.dp)) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                    Text("Total returns", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text((if (total.signum() > 0) "+" else "") + Fmt.rupee(total), fontSize = 20.sp, fontWeight = FontWeight.Medium,
-                        color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.padding(top = 2.dp).testTag("positions_total"))
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.clickable(enabled = open.isNotEmpty()) { confirmExitAll = true }.testTag("exit_all"), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.AutoMirrored.Filled.Logout, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Exit all", fontSize = 15.sp)
+            OutlinedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), shape = RoundedCornerShape(16.dp)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("TOTAL P&L", fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 2.sp, color = dim)
+                        Text((if (total.signum() > 0) "+" else "") + Fmt.rupee(total), fontSize = 20.sp, fontWeight = FontWeight.Medium,
+                            color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.padding(top = 6.dp).testTag("positions_total"))
                     }
-                    Spacer(Modifier.weight(1f))
                     // Safe Exit (auto-exit at a total profit/loss limit) isn't built yet.
                     Row(Modifier.clickable { vm.messages.tryEmit("Set Safe Exit is coming soon") }, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Set Safe Exit", fontSize = 14.sp, modifier = Modifier.dashedUnderline(MaterialTheme.colorScheme.outline))
-                        Spacer(Modifier.width(6.dp)); Icon(Icons.Filled.VerifiedUser, null, Modifier.size(16.dp), tint = Gain)
+                        Text("Set Safe Exit", fontSize = 13.sp, modifier = Modifier.dashedUnderline(MaterialTheme.colorScheme.outline))
+                        Spacer(Modifier.width(6.dp)); Icon(Icons.Filled.VerifiedUser, null, Modifier.size(18.dp), tint = Gain)
                     }
                 }
             }
         }
-        items(positions, key = { it.instrumentId }) { p -> PositionRow(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId]?.ltp) { sel = p } }
+        item {
+            // Toolbar: filter on the left; P&L chart (not built yet), Exit all, and layout (look-only) on the right.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box {
+                    IconButton({ filterMenu = true }, Modifier.testTag("pos_filter")) { Icon(Icons.Default.FilterList, "Filter positions") }
+                    DropdownMenu(filterMenu, { filterMenu = false }) {
+                        PosFilter.values().forEach { f -> DropdownMenuItem({ Text(f.label, fontWeight = if (f == filter) FontWeight.SemiBold else FontWeight.Normal) }, { filter = f; filterMenu = false }) }
+                    }
+                }
+                if (filter != PosFilter.ALL) Text(filter.label, fontSize = 13.sp, color = dim)
+                Spacer(Modifier.weight(1f))
+                IconButton({ vm.messages.tryEmit("P&L chart is coming soon") }) { Icon(Icons.AutoMirrored.Filled.ShowChart, "P&L chart") }
+                IconButton({ confirmExitAll = true }, Modifier.testTag("exit_all"), enabled = open.isNotEmpty()) { Icon(Icons.AutoMirrored.Filled.Logout, "Exit all") }
+                IconButton({ vm.messages.tryEmit("Layout options are coming soon") }) { Icon(Icons.Outlined.ViewAgenda, "Layout") }
+            }
+        }
+        val shownOpen = if (filter == PosFilter.CLOSED) emptyList() else open
+        val shownClosed = if (filter == PosFilter.OPEN) emptyList() else closed
+        items(shownOpen, key = { it.instrumentId }) { p -> PositionRow(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId]?.ltp) { sel = p } }
+        // The one subtle line between active and booked positions.
+        if (shownOpen.isNotEmpty() && shownClosed.isNotEmpty()) item { HorizontalDivider(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp), color = MaterialTheme.colorScheme.outlineVariant) }
+        items(shownClosed, key = { it.instrumentId }) { p -> PositionRow(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId]?.ltp) { sel = p } }
     }
     sel?.let { p0 -> val p = acc?.positions?.get(p0.instrumentId) ?: p0
-        PositionSheet(vm, p, pnl[p.instrumentId] ?: BigDecimal.ZERO, onClose = { sel = null },
+        val u = vm.info(p.instrumentId)?.underlying?.let { n -> com.papertrade.app.data.market.Underlying.values().firstOrNull { it.name == n } }
+        PositionSheet(vm, p, pnl[p.instrumentId] ?: BigDecimal.ZERO, quotes[p.instrumentId]?.ltp, val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId },
+            underlying = u?.displayName, onClose = { sel = null },
+            onOpen = { sel = null; nav.contract(p.instrumentId) },
+            onChart = u?.let { { sel = null; nav.index(it) } },
+            onChain = u?.let { { sel = null; nav.chain(it) } },
             onExit = { sel = null; vm.closePosition(p) },
-            onAddMore = { sel = null; nav.order(p.instrumentId, if (p.quantity < 0) Side.SELL else Side.BUY) })
+            onBuy = { sel = null; nav.order(p.instrumentId, Side.BUY) })
     }
     if (confirmExitAll) AlertDialog(onDismissRequest = { confirmExitAll = false }, title = { Text("Exit all positions?") },
         text = { Text("${open.size} open ${if (open.size == 1) "position" else "positions"} will be closed at market price.") },
@@ -160,45 +194,112 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
         dismissButton = { TextButton({ confirmExitAll = false }) { Text("Cancel") } })
 }
 
-/** "Delivery" / name / "Mkt ₹x" on the left; signed quantity / P&L / "Avg ₹y" on the right. Booked rows are greyed. */
+/**
+ * Groww position row:  "Delivery · NSE" ........ [+65 ›]
+ *                      NIFTY 27 Oct 23700 Call ..  +₹9.75
+ *                      Avg ₹5.45 ............... Mkt ₹5.60
+ * Booked (closed) rows: everything greyed, returns included, with a green "B" chip instead of the quantity.
+ */
 @Composable
 private fun PositionRow(vm: AppVM, p: Position, pnl: BigDecimal, ltp: BigDecimal?, onClick: () -> Unit) {
     val info = vm.info(p.instrumentId); val units = p.quantity * (info?.lotSize ?: 1)
-    val dim = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (p.isOpen) 1f else 0.55f).testTag("pos_${p.instrumentId}")) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(if (p.isOpen) "Delivery" else "Delivery · Closed", fontSize = 13.sp, color = dim)
-                Text(Fmt.label(p.instrumentId, info), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("Mkt ${Fmt.rupee(ltp)}", fontSize = 13.sp, color = dim)            }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text((if (units > 0) "+" else "") + units, fontSize = 13.sp, color = dim)
-                Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
-                Text("Avg ${Fmt.rupee(p.avgPrice.takeIf { p.isOpen })}", fontSize = 13.sp, color = dim)
+    val faded = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    val dim = if (p.isOpen) MaterialTheme.colorScheme.onSurfaceVariant else faded
+    val main = if (p.isOpen) MaterialTheme.colorScheme.onSurface else faded
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp).testTag("pos_${p.instrumentId}"),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Delivery · ${p.instrumentId.substringBefore(':')}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
+            val (chip, chipColor) = if (p.isOpen) ((if (units > 0) "+" else "") + units) to ChipBlue else "B" to Gain
+            Row(Modifier.background(chipColor.copy(alpha = 0.1f), RoundedCornerShape(50)).padding(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(chip, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = chipColor)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(16.dp), tint = chipColor)
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(Fmt.label(p.instrumentId, info), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = main, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                color = if (p.isOpen) Fmt.color(pnl, MaterialTheme.colorScheme.onSurface) else faded)
+        }
+        Row {
+            Text("Avg ${Fmt.rupee(p.avgPrice)}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
+            Text("Mkt ${Fmt.rupee(ltp)}", fontSize = 13.sp, color = dim)
+        }
     }
 }
 
-/** Tap on a position: its details, then Exit (close at market) and Add more (order page, same side). */
+/** Groww's quantity-chip blue. */
+private val ChipBlue = androidx.compose.ui.graphics.Color(0xFF5367FF)
+
+/**
+ * Groww's tap-on-position sheet: a summary card (tap the name for contract details; Add SL/TGT), shortcuts to the
+ * underlying's chart and option chain, expandable position details, then Buy (order page) and Exit (close at market).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PositionSheet(vm: AppVM, p: Position, pnl: BigDecimal, onClose: () -> Unit, onExit: () -> Unit, onAddMore: () -> Unit) {
-    val info = vm.info(p.instrumentId)
-    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).testTag("position_sheet")) {
-            Text(Fmt.label(p.instrumentId, info), fontSize = 17.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(8.dp))
-            StatRow("Quantity", "${p.quantity * (info?.lotSize ?: 1)} (${p.quantity} ${if (kotlin.math.abs(p.quantity) == 1) "lot" else "lots"})")
-            if (p.isOpen) StatRow("Avg price", Fmt.rupee(p.avgPrice))
-            StatRow("Charges", Fmt.rupee(p.charges))
-            StatRow("Returns", (if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
-            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (p.isOpen) OutlinedButton(onExit, Modifier.weight(1f).height(52.dp).testTag("pos_exit"), shape = RoundedCornerShape(8.dp)) { Text("Exit", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
-                Button(onAddMore, Modifier.weight(1f).height(52.dp).testTag("pos_add_more"), enabled = info != null, shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Gain, contentColor = androidx.compose.ui.graphics.Color.White)) { Text(if (p.isOpen) "Add more" else "Buy again", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+private fun PositionSheet(vm: AppVM, p: Position, pnl: BigDecimal, ltp: BigDecimal?, v: PositionValuation?, underlying: String?,
+                          onClose: () -> Unit, onOpen: () -> Unit, onChart: (() -> Unit)?, onChain: (() -> Unit)?, onExit: () -> Unit, onBuy: () -> Unit) {
+    val info = vm.info(p.instrumentId); val units = p.quantity * (info?.lotSize ?: 1)
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    var details by remember { mutableStateOf(false) }
+    // Open fully: half-open would hide Buy/Exit below the screen edge.
+    ModalBottomSheet(onDismissRequest = onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp).padding(bottom = 16.dp).testTag("position_sheet")) {
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row { Text("Delivery", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
+                        Text(if (p.isOpen) (if (units > 0) "+ " else "- ") + kotlin.math.abs(units) else "Closed", fontSize = 13.sp, color = if (p.isOpen) ChipBlue else dim) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f).clickable(onClick = onOpen), verticalAlignment = Alignment.CenterVertically) {
+                            Text(Fmt.label(p.instrumentId, info), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Contract details", Modifier.size(20.dp))
+                        }
+                        Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
+                    }
+                    Row { Text("Avg ${Fmt.rupee(p.avgPrice)}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f)); Text("Mkt ${Fmt.rupee(ltp)}", fontSize = 13.sp, color = dim) }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Text("Add SL/TGT", fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(16.dp)
+                    .dashedUnderline(MaterialTheme.colorScheme.onSurface).clickable { vm.messages.tryEmit("Stoploss/target is coming next") })
             }
+            Spacer(Modifier.height(8.dp))
+            SheetLink(Icons.Default.CandlestickChart, "${underlying ?: "Index"} Chart", onChart)
+            SheetLink(Icons.Default.Link, "Option Chain", onChain) {
+                OutlinedButton({ vm.messages.tryEmit("Adjust position is coming soon") }, shape = RoundedCornerShape(10.dp), contentPadding = PaddingValues(horizontal = 14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) {
+                    Icon(Icons.Default.SwapHoriz, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Adjust position", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+            SheetLink(Icons.AutoMirrored.Filled.List, "Position details", { details = !details })
+            if (details) Column(Modifier.padding(start = 56.dp, bottom = 8.dp)) {
+                StatRow("Quantity", "$units (${kotlin.math.abs(p.quantity)} ${if (kotlin.math.abs(p.quantity) == 1) "lot" else "lots"})")
+                StatRow("Realised P&L", Fmt.signed(v?.realizedGross ?: p.realizedGross))
+                StatRow("Unrealised P&L", Fmt.signed(v?.unrealized))
+                StatRow("Charges", Fmt.rupee(p.charges))
+            }
+            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Button(onBuy, Modifier.weight(1f).height(52.dp).testTag("pos_buy"), enabled = info != null, shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Gain, contentColor = androidx.compose.ui.graphics.Color.White)) { Text("Buy", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+                Button(onExit, Modifier.weight(1f).height(52.dp).testTag("pos_exit"), enabled = p.isOpen, shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Loss, contentColor = androidx.compose.ui.graphics.Color.White)) { Text("Exit", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+            }
+        }
+    }
+}
+
+/** A sheet shortcut row: icon, label, optional trailing control, hairline under the label. Greyed when [onClick] is null. */
+@Composable
+private fun SheetLink(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: (() -> Unit)?, trailing: @Composable () -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().clickable(enabled = onClick != null) { onClick?.invoke() }, verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.padding(horizontal = 4.dp).size(24.dp))
+        Spacer(Modifier.width(28.dp))
+        Column(Modifier.weight(1f)) {
+            Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, fontSize = 15.sp, color = if (onClick != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                trailing()
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }
