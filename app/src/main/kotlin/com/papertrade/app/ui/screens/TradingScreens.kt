@@ -129,7 +129,13 @@ private enum class PosFilter(val label: String) { ALL("All positions"), OPEN("Op
 @Composable
 fun PositionsScreen(vm: AppVM, nav: Nav) {
     val acc by vm.account.collectAsState(); val val_ by vm.valuation.collectAsState(); val quotes by vm.quotes.collectAsState()
-    val all = acc?.positions?.values?.filter { p -> vm.info(p.instrumentId)?.segment != Segment.EQUITY && !p.instrumentId.endsWith("-EQ") } ?: emptyList()
+    val now by vm.now.collectAsState(); val today = now.atZone(MarketHours.IST).toLocalDate()
+    // Last fill per instrument, to know which day a closed position was booked.
+    val lastFill = acc?.fills?.groupBy { it.instrumentId }?.mapValues { (_, f) -> f.maxOf { it.time }.atZone(MarketHours.IST).toLocalDate() } ?: emptyMap()
+    // Only today's book: expired contracts drop off, and closed positions show only on the day they were closed.
+    val all = acc?.positions?.values?.filter { p -> vm.info(p.instrumentId)?.segment != Segment.EQUITY && !p.instrumentId.endsWith("-EQ") }
+        ?.filter { p -> vm.info(p.instrumentId)?.expiry?.let { !it.isBefore(today) } ?: true }
+        ?.filter { p -> p.isOpen || lastFill[p.instrumentId] == today } ?: emptyList()
     var sel by remember { mutableStateOf<Position?>(null) }; var confirmExitAll by remember { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf(PosFilter.ALL) }; var filterMenu by remember { mutableStateOf(false) }
     if (all.isEmpty()) { EmptyState(Icons.Outlined.Insights, "No positions", "Futures and options you buy show up here."); return }
