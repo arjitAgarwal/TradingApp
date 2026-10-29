@@ -16,7 +16,7 @@
 
 **Accounting (ledger):** `cash = starting capital + Σ ledger`. Equity & options: cash moves by trade value (short option credits premium). Futures: no cash on entry; realised P&L settles to cash on reduce/close. Charges debit cash. `equity = cash + Σ(equity/options: signedQty×lot×LTP; futures: unrealised)`, and `net P&L = realised + unrealised − charges` (tested).
 
-**Positions:** average-cost; increase re-averages; reduce realises vs average; reversal closes the old side at average and opens the remainder at the fill price. Delivery equity is long-only and shown in Holdings; futures/options show in Positions. Each exposure lives in exactly one position row, so it is never double-counted.
+**Positions:** average-cost; increase re-averages; reduce realises vs average; reversal closes the old side at average and opens the remainder at the fill price. Delivery equity is long-only and shown in Holdings; futures/options show in Positions. Each exposure lives in exactly one position row, so it is never double-counted. The Positions screen shows today's book: a row's P&L (and TOTAL P&L) leaves out realised P&L and charges from fills before today (IST), so re-entering a contract closed on an earlier day starts from zero realised. An open position carried overnight still shows unrealised P&L against its average price.
 
 **Margin (simulated, NOT broker margin):** futures 12% of notional; short options 15% of *strike* notional (uncovered short loss is not capped at premium). Orders that would leave available cash < 0 are rejected, except risk-reducing fills. Open (unfilled) orders do not reserve margin; the check repeats at fill time.
 

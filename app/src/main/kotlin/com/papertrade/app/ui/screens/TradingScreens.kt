@@ -139,7 +139,13 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
     var sel by remember { mutableStateOf<Position?>(null) }; var confirmExitAll by remember { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf(PosFilter.ALL) }; var filterMenu by remember { mutableStateOf(false) }
     if (all.isEmpty()) { EmptyState(Icons.Outlined.Insights, "No positions", "Futures and options you buy show up here."); return }
-    val pnl = all.associate { p -> p.instrumentId to (val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.netPnl ?: (p.realizedGross - p.charges)) }
+    // A position row keeps its realised P&L and charges across days; today's book leaves out what earlier days booked,
+    // so re-entering a contract closed yesterday doesn't bring back yesterday's profit.
+    val earlier = acc?.fills?.filter { it.time.atZone(MarketHours.IST).toLocalDate().isBefore(today) }?.groupBy { it.instrumentId }
+        ?.mapValues { (_, f) -> f.fold(BigDecimal.ZERO) { s, x -> s + x.realizedGross } to f.fold(BigDecimal.ZERO) { s, x -> s + x.charges } } ?: emptyMap()
+    fun todayOf(p: Position) = earlier[p.instrumentId]?.let { (g, c) -> p.copy(realizedGross = p.realizedGross - g, charges = p.charges - c) } ?: p
+    val pnl = all.associate { p -> p.instrumentId to ((val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.netPnl ?: p.realizedNet)
+        - (earlier[p.instrumentId]?.let { (g, c) -> g - c } ?: BigDecimal.ZERO)) }
     val open = all.filter { it.isOpen }; val closed = all.filterNot { it.isOpen }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     LazyColumn(Modifier.fillMaxSize()) {
@@ -183,7 +189,7 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
         if (shownOpen.isNotEmpty() && shownClosed.isNotEmpty()) item { HorizontalDivider(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp), color = MaterialTheme.colorScheme.outlineVariant) }
         items(shownClosed, key = { it.instrumentId }) { p -> PositionRow(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId]?.ltp) { sel = p } }
     }
-    sel?.let { p0 -> val p = acc?.positions?.get(p0.instrumentId) ?: p0
+    sel?.let { p0 -> val p = todayOf(acc?.positions?.get(p0.instrumentId) ?: p0)
         val u = vm.info(p.instrumentId)?.underlying?.let { n -> com.papertrade.app.data.market.Underlying.values().firstOrNull { it.name == n } }
         PositionSheet(vm, p, pnl[p.instrumentId] ?: BigDecimal.ZERO, quotes[p.instrumentId]?.ltp, val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId },
             underlying = u?.displayName, onClose = { sel = null },
@@ -279,7 +285,7 @@ private fun PositionSheet(vm: AppVM, p: Position, pnl: BigDecimal, ltp: BigDecim
             SheetLink(Icons.AutoMirrored.Filled.List, "Position details", { details = !details })
             if (details) Column(Modifier.padding(start = 56.dp, bottom = 8.dp)) {
                 StatRow("Quantity", "$units (${kotlin.math.abs(p.quantity)} ${if (kotlin.math.abs(p.quantity) == 1) "lot" else "lots"})")
-                StatRow("Realised P&L", Fmt.signed(v?.realizedGross ?: p.realizedGross))
+                StatRow("Realised P&L", Fmt.signed(p.realizedGross))
                 StatRow("Unrealised P&L", Fmt.signed(v?.unrealized))
                 StatRow("Charges", Fmt.rupee(p.charges))
             }
