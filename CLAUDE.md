@@ -41,9 +41,11 @@ places a real order or moves money. Network use is read-only market data.
 - The emulator runs FYERS live; Upstox is not logged in there.
 
 ## UI rules
-- The look follows Groww (the friend wants it "Groww-identical"), but never copy Groww's name or logo.
-- Keep the DEMO banner in demo mode. Do not re-add the "PAPER" tag or the removed header row, and don't use the word
-  "simulated" in user-facing text.
+- The look follows Groww (the friend wants it "Groww-identical"). Never use Groww's name. The header logo is the user's
+  `alpha_logo.png` (`res/drawable-nodpi`); the user chose it knowingly on 2026-10-29 although it resembles Groww's mark.
+- Keep the DEMO banner in demo mode. Do not re-add the "PAPER" tag, and don't use the word "simulated" in user-facing text.
+- The header row (`AppHeader`: logo, "Stocks", search, look-only swirl, avatar) came back on 2026-10-29 at the user's
+  request.
 - The friend's phone is 360dp wide at font scale 1.0. Verify layouts on the `Small_Phone` AVD (720x1280 @320).
   Watchlist rows stay on one line.
 - Positions shows only today's book: expired contracts are hidden, closed positions show only on the day they were

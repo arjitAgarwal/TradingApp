@@ -1,5 +1,6 @@
 package com.papertrade.app.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -13,11 +14,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CandlestickChart
+import androidx.compose.material.icons.filled.Cyclone
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
@@ -28,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import com.papertrade.app.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
@@ -42,6 +47,7 @@ import com.papertrade.app.data.db.WatchlistItemEntity
 import com.papertrade.app.data.repo.LoginState
 import com.papertrade.app.ui.*
 import com.papertrade.app.ui.components.*
+import com.papertrade.app.ui.theme.Demo
 import com.papertrade.app.ui.theme.Gain
 import com.papertrade.app.ui.theme.Loss
 import com.papertrade.core.Side
@@ -76,6 +82,24 @@ fun ChangeBadge(change: java.math.BigDecimal?) {
         modifier = Modifier.background(c.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
+/**
+ * Groww-style header: round logo and "Stocks" on the left; search, a look-only swirl and the profile avatar on the right.
+ */
+@Composable
+fun AppHeader(onSearch: () -> Unit, onSwirl: () -> Unit, onProfile: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(R.drawable.alpha_logo), "ALPHA", Modifier.size(40.dp).clip(CircleShape).testTag("header_logo"))
+        Text("Stocks", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 14.dp).weight(1f))
+        IconButton(onSearch, Modifier.testTag("header_search")) { Icon(Icons.Default.Search, "Search", Modifier.size(26.dp)) }
+        IconButton(onSwirl, Modifier.testTag("header_swirl")) { Icon(Icons.Default.Cyclone, "Coming soon", Modifier.size(26.dp)) }
+        IconButton(onProfile, Modifier.testTag("open_account")) {
+            Box(Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Person, "Account", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+            }
+        }
+    }
+}
+
 @Composable
 fun MainScreen(vm: AppVM, nav: Nav) {
     // Fixed tabs, then one tab per watchlist (named by the user, like Groww), then "+" to add a watchlist.
@@ -96,7 +120,10 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
         Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
+            // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode.
+            Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
+            AppHeader(onSearch = { tab = 0 }, onSwirl = { vm.messages.tryEmit("Coming soon") }, onProfile = nav.account)
             MarketTicker(vm, nav.index)
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
                 Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
