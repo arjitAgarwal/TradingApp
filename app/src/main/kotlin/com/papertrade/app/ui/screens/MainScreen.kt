@@ -26,8 +26,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.papertrade.app.data.market.DataMode
@@ -137,10 +140,19 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
             if (canDelete) IconButton({ confirmDelete = true }, Modifier.testTag("delete_watchlist")) { Icon(Icons.Default.DeleteOutline, "Delete watchlist") }
         }
         if (list.items.isEmpty()) EmptyState(Icons.Default.StarBorder, "This watchlist is empty", "Search in Explore and tap ☆ to add a stock.")
-        else LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
-            items(list.items, key = { it.symbol }) { item -> Box(Modifier.testTag("wl_item_${item.symbol}")) {
-                WatchRow(Fmt.labelParts(item.symbol, vm.info(item.symbol)), quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()),
-                    sparks[item.symbol].orEmpty()) { action = item } }
+        else {
+            // Price column as wide as the widest price or change line in the list: charts still line up down the list, the
+            // percent is never cut off, and short values leave the name more room for the strike.
+            val measurer = rememberTextMeasurer(); val style = LocalTextStyle.current; val density = LocalDensity.current
+            val priceCol = list.items.maxOfOrNull { val q = quotes[it.symbol]
+                maxOf(measurer.measure(Fmt.changeLine(q?.change, q?.changePct), style.copy(fontSize = 13.sp)).size.width,
+                    measurer.measure(Fmt.rupee(q?.ltp), style.copy(fontSize = 15.sp)).size.width) }
+                ?.let { with(density) { it.toDp() } + 2.dp }?.coerceAtLeast(80.dp) ?: 80.dp
+            LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
+                items(list.items, key = { it.symbol }) { item -> Box(Modifier.testTag("wl_item_${item.symbol}")) {
+                    WatchRow(Fmt.labelParts(item.symbol, vm.info(item.symbol)), quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()),
+                        sparks[item.symbol].orEmpty(), priceCol) { action = item } }
+                }
             }
         }
     }
@@ -157,10 +169,10 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
 
 /**
  * Groww watchlist row: name in bold over "Call"/"Put"/"Fut" (equities: just the ticker), today's mini chart in a
- * fixed column, price over change. The price column has a fixed width so the charts line up down the list.
+ * fixed column, price over change. [priceCol] is shared by the whole list so the charts line up.
  */
 @Composable
-private fun WatchRow(label: Pair<String, String?>, q: MarketQuote?, f: Freshness, closes: List<java.math.BigDecimal>, onClick: () -> Unit) {
+private fun WatchRow(label: Pair<String, String?>, q: MarketQuote?, f: Freshness, closes: List<java.math.BigDecimal>, priceCol: Dp, onClick: () -> Unit) {
     val fresh = f == Freshness.LIVE || f == Freshness.DEMO
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -168,11 +180,11 @@ private fun WatchRow(label: Pair<String, String?>, q: MarketQuote?, f: Freshness
                 Text(label.first, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 label.second?.let { Text(it, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp)) }
             }
-            Sparkline(closes, q?.ltp, q?.prevClose, q?.change, Modifier.padding(horizontal = 8.dp).size(width = 52.dp, height = 20.dp))
-            Column(Modifier.width(118.dp), horizontalAlignment = Alignment.End) {
-                Text(Fmt.rupee(q?.ltp), fontSize = 15.sp, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+            Sparkline(closes, q?.ltp, q?.prevClose, q?.change, Modifier.padding(horizontal = 6.dp).size(width = 44.dp, height = 20.dp))
+            Column(Modifier.width(priceCol), horizontalAlignment = Alignment.End) {
+                Text(Fmt.rupee(q?.ltp), fontSize = 15.sp, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
                 Text(Fmt.changeLine(q?.change, q?.changePct), fontSize = 13.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant),
-                    maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+                    maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 6.dp))
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
