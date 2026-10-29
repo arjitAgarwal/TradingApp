@@ -115,6 +115,19 @@ class AppVM(private val c: AppContainer) : ViewModel() {
             }
         }
     }
+    /** Nearest option expiry per index, for the "Expiry Tue" chips. One option-chain read per index per provider. */
+    val nearestExpiry = MutableStateFlow<Map<Underlying, LocalDate>>(emptyMap())
+    private var expiryProvider: String? = null
+    fun loadExpiries() {
+        if (expiryProvider == provider.value.id) return
+        expiryProvider = provider.value.id; nearestExpiry.value = emptyMap()
+        val today = LocalDate.now(MarketHours.IST)
+        viewModelScope.launch {
+            Underlying.values().forEach { u -> provider.value.optionChain(u, null, 1).onSuccess { ch ->
+                ch.expiries.filter { !it.isBefore(today) }.minOrNull()?.let { e -> nearestExpiry.update { it + (u to e) } }
+            } }
+        }
+    }
     suspend fun search(q: String) = provider.value.searchEquities(q)
     suspend fun equityInfo(symbol: String) = provider.value.equityInfo(symbol).onSuccess { c.contracts[symbol] = it }
 }

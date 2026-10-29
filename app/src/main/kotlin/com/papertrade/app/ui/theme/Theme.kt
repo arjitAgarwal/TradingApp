@@ -21,6 +21,7 @@ val Gain = Color(0xFF00B386)
 val Loss = Color(0xFFEB5B3C)
 val Warn = Color(0xFFB7791F)
 val Demo = Color(0xFF7C3AED)
+val Accent = Color(0xFF3F51D9)             // selected tabs and bottom-bar item
 private val Ink = Color(0xFF44475B)        // primary text
 private val InkMuted = Color(0xFF7C7E8C)   // secondary text
 private val Hairline = Color(0xFFE9E9EB)   // dividers, outlines

@@ -31,6 +31,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Shield
+import com.papertrade.app.ui.theme.Accent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -122,9 +134,9 @@ private fun OrderRow(vm: AppVM, o: Order, onClick: () -> Unit) {
 private enum class PosFilter(val label: String) { ALL("All positions"), OPEN("Open"), CLOSED("Closed") }
 
 /**
- * Groww-style positions: a "TOTAL P&L" card with Set Safe Exit, a toolbar (filter; chart, Exit all, layout), then one
- * flat row per F&O position. Closed (booked) positions stay in the list, greyed, below a divider. Tapping a row opens
- * Exit / Add more.
+ * Today's positions: a toolbar (filter, search, Secure Exit, Exit all), one card per F&O position with One Tap Exit,
+ * closed positions greyed below with today's buy and sell averages, and a Total bar pinned to the bottom (tap it for
+ * realised/unrealised). Tapping a card opens the position sheet.
  */
 @Composable
 fun PositionsScreen(vm: AppVM, nav: Nav) {
@@ -138,6 +150,8 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
         ?.filter { p -> p.isOpen || lastFill[p.instrumentId] == today } ?: emptyList()
     var sel by remember { mutableStateOf<Position?>(null) }; var confirmExitAll by remember { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf(PosFilter.ALL) }; var filterMenu by remember { mutableStateOf(false) }
+    var searching by rememberSaveable { mutableStateOf(false) }; var query by rememberSaveable { mutableStateOf("") }
+    var breakdown by rememberSaveable { mutableStateOf(false) }
     if (all.isEmpty()) { EmptyState(Icons.Outlined.Insights, "No positions", "Futures and options you buy show up here."); return }
     // A position row keeps its realised P&L and charges across days; today's book leaves out what earlier days booked,
     // so re-entering a contract closed yesterday doesn't bring back yesterday's profit.
@@ -146,48 +160,60 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
     fun todayOf(p: Position) = earlier[p.instrumentId]?.let { (g, c) -> p.copy(realizedGross = p.realizedGross - g, charges = p.charges - c) } ?: p
     val pnl = all.associate { p -> p.instrumentId to ((val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.netPnl ?: p.realizedNet)
         - (earlier[p.instrumentId]?.let { (g, c) -> g - c } ?: BigDecimal.ZERO)) }
+    // Today's fills per contract: lots traded and the average buy and sell prices on the closed cards.
+    val todays = acc?.fills?.filter { it.time.atZone(MarketHours.IST).toLocalDate() == today }?.groupBy { it.instrumentId } ?: emptyMap()
+    fun avg(id: String, side: Side) = todays[id]?.filter { it.side == side }?.takeIf { it.isNotEmpty() }
+        ?.let { f -> Dec.div(f.fold(BigDecimal.ZERO) { s, x -> s + x.price * BigDecimal(x.quantity) }, BigDecimal(f.sumOf { it.quantity })) }
+    fun lots(id: String) = todays[id].orEmpty().let { f -> maxOf(f.filter { it.side == Side.BUY }.sumOf { it.quantity }, f.filter { it.side == Side.SELL }.sumOf { it.quantity }) }
     val open = all.filter { it.isOpen }; val closed = all.filterNot { it.isOpen }
+    fun matches(p: Position) = query.isBlank() || posTitle(p.instrumentId, vm.info(p.instrumentId)).text.contains(query.trim(), ignoreCase = true)
+    val shownOpen = (if (filter == PosFilter.CLOSED) emptyList() else open).filter(::matches)
+    val shownClosed = (if (filter == PosFilter.OPEN) emptyList() else closed).filter(::matches)
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
-    LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            val total = pnl.values.fold(BigDecimal.ZERO, BigDecimal::add)
-            OutlinedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), shape = RoundedCornerShape(16.dp)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("TOTAL P&L", fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 2.sp, color = dim)
-                        Text((if (total.signum() > 0) "+" else "") + Fmt.rupee(total), fontSize = 20.sp, fontWeight = FontWeight.Medium,
-                            color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.padding(top = 6.dp).testTag("positions_total"))
-                    }
-                    // Safe Exit (auto-exit at a total profit/loss limit) isn't built yet.
-                    Row(Modifier.clickable { vm.messages.tryEmit("Set Safe Exit is coming soon") }, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Set Safe Exit", fontSize = 13.sp, modifier = Modifier.dashedUnderline(MaterialTheme.colorScheme.outline))
-                        Spacer(Modifier.width(6.dp)); Icon(Icons.Filled.VerifiedUser, null, Modifier.size(18.dp), tint = Gain)
-                    }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box {
+                IconButton({ filterMenu = true }, Modifier.testTag("pos_filter")) { Icon(Icons.Default.Tune, "Filter positions", tint = Accent) }
+                DropdownMenu(filterMenu, { filterMenu = false }) {
+                    PosFilter.values().forEach { f -> DropdownMenuItem({ Text(f.label, fontWeight = if (f == filter) FontWeight.SemiBold else FontWeight.Normal) }, { filter = f; filterMenu = false }) }
                 }
             }
-        }
-        item {
-            // Toolbar: filter on the left; P&L chart (not built yet), Exit all, and layout (look-only) on the right.
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box {
-                    IconButton({ filterMenu = true }, Modifier.testTag("pos_filter")) { Icon(Icons.Default.FilterList, "Filter positions") }
-                    DropdownMenu(filterMenu, { filterMenu = false }) {
-                        PosFilter.values().forEach { f -> DropdownMenuItem({ Text(f.label, fontWeight = if (f == filter) FontWeight.SemiBold else FontWeight.Normal) }, { filter = f; filterMenu = false }) }
-                    }
-                }
-                if (filter != PosFilter.ALL) Text(filter.label, fontSize = 13.sp, color = dim)
-                Spacer(Modifier.weight(1f))
-                IconButton({ vm.messages.tryEmit("P&L chart is coming soon") }) { Icon(Icons.AutoMirrored.Filled.ShowChart, "P&L chart") }
-                IconButton({ confirmExitAll = true }, Modifier.testTag("exit_all"), enabled = open.isNotEmpty()) { Icon(Icons.AutoMirrored.Filled.Logout, "Exit all") }
-                IconButton({ vm.messages.tryEmit("Layout options are coming soon") }) { Icon(Icons.Outlined.ViewAgenda, "Layout") }
+            IconButton({ searching = !searching; if (!searching) query = "" }, Modifier.testTag("pos_search")) { Icon(Icons.Default.Search, "Search positions", tint = Accent) }
+            if (filter != PosFilter.ALL) Text(filter.label, fontSize = 12.sp, color = dim, maxLines = 1)
+            Spacer(Modifier.weight(1f))
+            // Secure Exit (auto-exit at a total profit/loss limit) isn't built yet.
+            TextButton({ vm.messages.tryEmit("Secure Exit is coming soon") }, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                Icon(Icons.Outlined.Shield, null, Modifier.size(18.dp), tint = Accent); Spacer(Modifier.width(4.dp)); Text("SECURE EXIT", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+            }
+            TextButton({ confirmExitAll = true }, Modifier.testTag("exit_all"), enabled = open.isNotEmpty(), contentPadding = PaddingValues(horizontal = 6.dp)) {
+                Icon(Icons.AutoMirrored.Filled.Logout, null, Modifier.size(18.dp), tint = if (open.isNotEmpty()) Accent else dim); Spacer(Modifier.width(4.dp))
+                Text("EXIT ALL", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (open.isNotEmpty()) Accent else dim)
             }
         }
-        val shownOpen = if (filter == PosFilter.CLOSED) emptyList() else open
-        val shownClosed = if (filter == PosFilter.OPEN) emptyList() else closed
-        items(shownOpen, key = { it.instrumentId }) { p -> PositionRow(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId]?.ltp) { sel = p } }
-        // The one subtle line between active and booked positions.
-        if (shownOpen.isNotEmpty() && shownClosed.isNotEmpty()) item { HorizontalDivider(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp), color = MaterialTheme.colorScheme.outlineVariant) }
-        items(shownClosed, key = { it.instrumentId }) { p -> PositionRow(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId]?.ltp) { sel = p } }
+        if (searching) OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("Search positions") },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("pos_query"))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        LazyColumn(Modifier.weight(1f)) {
+            items(shownOpen, key = { it.instrumentId }) { p ->
+                PositionCard(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId], null, onExit = { vm.closePosition(p) }) { sel = p }
+            }
+            items(shownClosed, key = { it.instrumentId }) { p ->
+                PositionCard(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId], Triple(lots(p.instrumentId), avg(p.instrumentId, Side.BUY), avg(p.instrumentId, Side.SELL)), onExit = {}) { sel = p }
+            }
+            if (shownOpen.isEmpty() && shownClosed.isEmpty()) item { Text("No positions match", color = dim, modifier = Modifier.padding(16.dp)) }
+        }
+        // Total of today's book (all visible rows, whatever the filter), pinned above the bottom bar.
+        val total = pnl.values.fold(BigDecimal.ZERO, BigDecimal::add)
+        val unrealised = open.mapNotNull { p -> val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.unrealized }.fold(BigDecimal.ZERO, BigDecimal::add)
+        Column(Modifier.fillMaxWidth().background(Fmt.color(total, dim).copy(alpha = 0.12f)).clickable { breakdown = !breakdown }.padding(horizontal = 16.dp, vertical = 12.dp).testTag("positions_total_bar")) {
+            if (breakdown) { StatRow("Realised today", Fmt.signed(total - unrealised)); StatRow("Unrealised", Fmt.signed(unrealised)); Spacer(Modifier.height(6.dp)) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.CheckCircle, null, Modifier.size(20.dp), tint = Gain); Spacer(Modifier.width(8.dp))
+                Text("Total", fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Text(signedRupee(total), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.testTag("positions_total"))
+                Icon(if (breakdown) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, if (breakdown) "Hide breakdown" else "Show breakdown")
+            }
+        }
     }
     sel?.let { p0 -> val p = todayOf(acc?.positions?.get(p0.instrumentId) ?: p0)
         val u = vm.info(p.instrumentId)?.underlying?.let { n -> com.papertrade.app.data.market.Underlying.values().firstOrNull { it.name == n } }
@@ -205,42 +231,63 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
         dismissButton = { TextButton({ confirmExitAll = false }) { Text("Cancel") } })
 }
 
-/**
- * Groww position row:  "Delivery · NSE" ........ [+65 ›]
- *                      NIFTY 27 Oct 23700 Call ..  +₹9.75
- *                      Avg ₹5.45 ............... Mkt ₹5.60
- * Booked (closed) rows: everything greyed, returns included, with a green "B" chip instead of the quantity.
- */
-@Composable
-private fun PositionRow(vm: AppVM, p: Position, pnl: BigDecimal, ltp: BigDecimal?, onClick: () -> Unit) {
-    val info = vm.info(p.instrumentId); val units = p.quantity * (info?.lotSize ?: 1)
-    val faded = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-    val dim = if (p.isOpen) MaterialTheme.colorScheme.onSurfaceVariant else faded
-    val main = if (p.isOpen) MaterialTheme.colorScheme.onSurface else faded
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp).testTag("pos_${p.instrumentId}"),
-        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text((if (p.isOpen) "" else "Closed · ") + "Delivery · ${p.instrumentId.substringBefore(':')}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
-            val (chip, chipColor) = if (p.isOpen) ((if (units > 0) "+" else "") + units) to ChipBlue else "B" to Gain
-            Row(Modifier.background(chipColor.copy(alpha = 0.1f), RoundedCornerShape(50)).padding(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(chip, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = chipColor)
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(16.dp), tint = chipColor)
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(Fmt.label(p.instrumentId, info), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = main, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium,
-                color = if (p.isOpen) Fmt.color(pnl, MaterialTheme.colorScheme.onSurface) else faded)
-        }
-        Row {
-            Text("Avg ${Fmt.rupee(p.avgPrice)}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
-            Text("Mkt ${Fmt.rupee(ltp)}", fontSize = 13.sp, color = dim)
-        }
-    }
+private fun signedRupee(v: BigDecimal) = (if (v.signum() > 0) "+" else "") + Fmt.rupee(v)
+private val posDate = java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy", java.util.Locale.ENGLISH)
+
+/** "**NIFTY** 29-Sep-26 22450 PE" or "**NIFTY** 24-Nov-26 FUT"; a stock is just its ticker. */
+private fun posTitle(id: String, info: com.papertrade.app.data.market.InstrumentInfo?) = buildAnnotatedString {
+    val e = info?.expiry
+    if (e == null) { append(id.substringAfter(':').removeSuffix("-EQ")); return@buildAnnotatedString }
+    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(info.underlying ?: id.substringAfter(':')) }
+    append(" ${e.format(posDate)} " + (info.optionType?.let { "${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${it.name}" } ?: "FUT"))
 }
 
-/** Groww's quantity-chip blue. */
+@Composable
+private fun Chip(text: String, color: androidx.compose.ui.graphics.Color) = Text(text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color,
+    modifier = Modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+
+/**
+ * Open:   NIFTY 29-Sep-26 22450 PE ......... +₹191.10      Closed (greyed):  NIFTY 06-Oct-26 22300 PE ... +₹572.00
+ *         1 Lot • Avg. ₹8.18 ..... LTP ₹9.10 (+133.33%)                      1 Lot • CF ...... LTP ₹46.10 (231.65%)
+ *         [BUY] [CF] (1 Lot = 65) ...... ⚡ ONE TAP EXIT                      Buy ₹37.45 ............... Sell ₹46.25
+ * [booked] is (lots traded today, average buy, average sell) for a closed position, null for an open one.
+ */
+@Composable
+private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertrade.app.data.market.MarketQuote?, booked: Triple<Int, BigDecimal?, BigDecimal?>?,
+                         onExit: () -> Unit, onClick: () -> Unit) {
+    val info = vm.info(p.instrumentId); val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (p.isOpen) 1f else 0.5f).padding(horizontal = 16.dp, vertical = 14.dp)
+        .testTag("pos_${p.instrumentId}"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(posTitle(p.instrumentId, info), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(8.dp))
+            Text(signedRupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val n = booked?.first ?: kotlin.math.abs(p.quantity)
+            Text("$n ${if (n == 1) "Lot" else "Lots"} • " + if (booked == null) "Avg. ${Fmt.rupee(p.avgPrice)}" else "CF", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
+            Text("LTP ${Fmt.rupee(q?.ltp)} ", fontSize = 13.sp, color = dim)
+            Text("(${Fmt.pct(q?.changePct)})", fontSize = 13.sp, color = Fmt.color(q?.changePct, dim))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (booked == null) {
+                Chip(if (p.quantity > 0) "BUY" else "SELL", if (p.quantity > 0) Gain else Loss); Spacer(Modifier.width(6.dp)); Chip("CF", dim)
+                Text("  (1 Lot = ${info?.lotSize ?: "—"})", fontSize = 12.sp, color = dim, maxLines = 1, modifier = Modifier.weight(1f))
+                // Closes the whole position at market straight away (paper money, so no confirmation step).
+                Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onExit).padding(horizontal = 4.dp, vertical = 2.dp).testTag("one_tap_exit_${p.instrumentId}"),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Bolt, null, Modifier.size(16.dp), tint = Warn); Text("ONE TAP EXIT", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                }
+            } else {
+                Text("Buy ${Fmt.rupee(booked.second)}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
+                Text("Sell ${Fmt.rupee(booked.third)}", fontSize = 13.sp, color = dim)
+            }
+        }
+    }
+    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+/** Quantity blue in the position sheet. */
 private val ChipBlue = androidx.compose.ui.graphics.Color(0xFF5367FF)
 
 /**

@@ -1,6 +1,21 @@
 package com.papertrade.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Stars
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.StarBorder
+import com.papertrade.app.ui.theme.Accent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -77,18 +92,17 @@ fun ChangeBadge(change: java.math.BigDecimal?) {
         modifier = Modifier.background(c.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
+private enum class Section { HOME, WATCHLIST, PORTFOLIO, ORDERS }
+
+/**
+ * Search bar, the two index cards and a five-item bottom bar (HOME, WATCHLIST, PORTFOLIO, ORDERS, ACCOUNT). The app
+ * opens on WATCHLIST; ACCOUNT opens the settings screen.
+ */
 @Composable
 fun MainScreen(vm: AppVM, nav: Nav) {
-    // Fixed tabs, then one tab per watchlist (named by the user, like Groww), then "+" to add a watchlist.
-    val fixedTabs = listOf("Explore", "Holdings", "Positions", "Orders")
-    val lists by vm.watchlists.collectAsState()
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    var newList by remember { mutableStateOf(false) }; var openNewList by remember { mutableStateOf(false) }
-    LaunchedEffect(lists.size) {
-        if (openNewList) { tab = fixedTabs.size + lists.size - 1; openNewList = false } // jump to the list just created
-        else if (tab >= fixedTabs.size + lists.size) tab = 0 // its watchlist was deleted
-    }
-    val selected = tab.coerceIn(0, fixedTabs.size + lists.size - 1) // never index past the tabs while a deletion settles
+    var section by rememberSaveable { mutableStateOf(Section.WATCHLIST) }; var ordersTab by rememberSaveable { mutableIntStateOf(0) }
+    val provider by vm.provider.collectAsState()
+    LaunchedEffect(provider) { vm.loadExpiries() }
     val settings by vm.settings.collectAsState(); val feed by vm.feed.collectAsState()
     val fyersAuth by vm.fyersAuth.collectAsState(); val upstoxAuth by vm.upstoxAuth.collectAsState()
     val upstox = settings.liveSource == LiveSource.UPSTOX
@@ -100,61 +114,172 @@ fun MainScreen(vm: AppVM, nav: Nav) {
             // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode.
             Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
-            MarketTicker(vm, nav.index)
+            if (section == Section.ORDERS) OrdersTabs(ordersTab) { ordersTab = it } else SearchBar { section = Section.HOME }
+            IndexCards(vm, nav.index)
+            HorizontalDivider()
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
                 Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
                     color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
             }
             if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
-            // Plain text tabs, underline on the selected one; scrolls instead of wrapping "Positions" onto two lines.
-            ScrollableTabRow(selectedTabIndex = selected, edgePadding = 8.dp, containerColor = MaterialTheme.colorScheme.surface, divider = { HorizontalDivider() },
-                indicator = { pos -> TabRowDefaults.SecondaryIndicator(with(TabRowDefaults) { Modifier.tabIndicatorOffset(pos[selected]) }, height = 3.dp, color = MaterialTheme.colorScheme.onSurface) }) {
-                (fixedTabs.map { it to "tab_$it" } + lists.map { it.name to "tab_wl_${it.id}" }).forEachIndexed { i, (t, tag) ->
-                    Tab(selected == i, { tab = i }, selectedContentColor = MaterialTheme.colorScheme.onSurface, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        text = { Text(t, fontSize = 16.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, softWrap = false) }, modifier = Modifier.testTag(tag))
-                }
-                Tab(false, { newList = true }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant, icon = { Icon(Icons.Default.Add, "New watchlist") }, modifier = Modifier.testTag("tab_add_watchlist"))
-            }
         }
-    }, bottomBar = { BottomBar(onFno = { nav.chain(Underlying.NIFTY) }, onAccount = nav.account, onUnavailable = { vm.messages.tryEmit("$it isn't part of this paper-trading app") }) }) { pad ->
+    }, bottomBar = { BottomBar(section, { section = it }, nav.account) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
-            when (selected) {
-                0 -> ExploreScreen(vm, nav); 1 -> HoldingsScreen(vm, nav); 2 -> PositionsScreen(vm, nav); 3 -> OrdersScreen(vm)
-                else -> lists.getOrNull(selected - fixedTabs.size)?.let { WatchlistScreen(vm, nav, it, canDelete = lists.size > 1) }
+            when (section) {
+                Section.HOME -> ExploreScreen(vm, nav); Section.WATCHLIST -> WatchlistsPage(vm, nav)
+                Section.PORTFOLIO -> HoldingsScreen(vm, nav); Section.ORDERS -> if (ordersTab == 0) OrdersScreen(vm) else PositionsScreen(vm, nav)
             }
         }
+    }
+}
+
+/** Grey strip with a rounded search box; tapping it opens HOME, where stocks are searched. */
+@Composable
+private fun SearchBar(onClick: () -> Unit) {
+    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)).padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)).clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp).testTag("header_search"), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(12.dp))
+            Text("Search for Reliance, Tata", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * NIFTY and SENSEX side by side: name with the next expiry ("Expiry Tue", "Expiry Tomorrow"), then the level in the
+ * day's colour with ▲/▼ and the change. Tap one to open the index.
+ */
+@Composable
+private fun IndexCards(vm: AppVM, onIndex: (Underlying) -> Unit) {
+    val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState(); val expiries by vm.nearestExpiry.collectAsState()
+    val today = now.atZone(com.papertrade.core.MarketHours.IST).toLocalDate()
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Underlying.values().forEachIndexed { i, u ->
+            if (i > 0) VerticalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            val q = quotes[u.indexSymbol]
+            val fresh = freshnessOf(q, now, vm.maxAgeSec()).let { it == Freshness.LIVE || it == Freshness.DEMO }
+            val c = if (fresh) Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface) else MaterialTheme.colorScheme.onSurfaceVariant
+            Column(Modifier.weight(1f).clickable { onIndex(u) }.padding(horizontal = 8.dp, vertical = 10.dp).testTag("ticker_${u.name}")) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(u.name, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    expiries[u]?.let { e -> val soon = !e.isAfter(today.plusDays(1))
+                        Text(expiryChip(e, today), fontSize = 12.sp, maxLines = 1, softWrap = false,
+                            modifier = Modifier.background(if (soon) Gain.copy(alpha = 0.14f) else Accent.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                }
+                Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(Fmt.inr(q?.ltp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = c, maxLines = 1, softWrap = false)
+                    q?.change?.takeIf { it.signum() != 0 }?.let { Text(if (it.signum() > 0) "▲" else "▼", fontSize = 10.sp, color = c, modifier = Modifier.padding(start = 2.dp)) }
+                    Spacer(Modifier.weight(1f)); Spacer(Modifier.width(4.dp))
+                    // A ~180dp half on a 360dp phone can't always hold a big SENSEX move at full size, so this one shrinks to fit.
+                    FitText("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", 12.sp, MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+/** One-line text that steps its font down (no lower than [min]) until it fits its width, instead of being cut off. */
+@Composable
+private fun FitText(text: String, size: androidx.compose.ui.unit.TextUnit, color: Color, min: androidx.compose.ui.unit.TextUnit = 8.sp) {
+    var fs by remember(text.length, size) { mutableStateOf(size) } // keyed on length so ticking prices don't re-fit every second
+    Text(text, fontSize = fs, color = color, maxLines = 1, softWrap = false, onTextLayout = { if (it.hasVisualOverflow && fs > min) fs *= 0.92f })
+}
+
+private fun expiryChip(e: java.time.LocalDate, today: java.time.LocalDate) = "Expiry " + when (val d = java.time.temporal.ChronoUnit.DAYS.between(today, e)) {
+    0L -> "Today"; 1L -> "Tomorrow"
+    else -> if (d in 2..6) e.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH)
+        else e.format(java.time.format.DateTimeFormatter.ofPattern("dd MMM", java.util.Locale.ENGLISH))
+}
+
+/** Watchlist names as tabs (selected in blue), a fixed ⊕ on the right, then the selected list. */
+@Composable
+private fun WatchlistsPage(vm: AppVM, nav: Nav) {
+    val lists by vm.watchlists.collectAsState()
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var newList by remember { mutableStateOf(false) }; var openNewList by remember { mutableStateOf(false) }
+    LaunchedEffect(lists.size) {
+        if (openNewList) { tab = lists.size - 1; openNewList = false } // jump to the list just created
+        else if (tab >= lists.size) tab = 0 // its watchlist was deleted
+    }
+    val selected = tab.coerceIn(0, (lists.size - 1).coerceAtLeast(0)) // never index past the tabs while a deletion settles
+    Column(Modifier.fillMaxSize()) {
+        // Fixed height: a tab row can't report an intrinsic size, and the divider before ⊕ needs one to fill.
+        Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (lists.isEmpty()) Spacer(Modifier.weight(1f))
+            else ScrollableTabRow(selectedTabIndex = selected, modifier = Modifier.weight(1f), edgePadding = 12.dp, containerColor = MaterialTheme.colorScheme.surface, divider = {},
+                indicator = { pos -> TabRowDefaults.SecondaryIndicator(with(TabRowDefaults) { Modifier.tabIndicatorOffset(pos[selected]) }, height = 3.dp, color = Accent) }) {
+                lists.forEachIndexed { i, w ->
+                    Tab(selected == i, { tab = i }, selectedContentColor = Accent, unselectedContentColor = MaterialTheme.colorScheme.onSurface,
+                        text = { Text(w.name, fontSize = 17.sp, maxLines = 1, softWrap = false) }, modifier = Modifier.testTag("tab_wl_${w.id}"))
+                }
+            }
+            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            IconButton({ newList = true }, Modifier.padding(horizontal = 8.dp).testTag("tab_add_watchlist")) { Icon(Icons.Outlined.AddCircleOutline, "New watchlist", Modifier.size(30.dp)) }
+        }
+        HorizontalDivider()
+        lists.getOrNull(selected)?.let { WatchlistScreen(vm, nav, it, canDelete = lists.size > 1) }
     }
     if (newList) NameDialog("New watchlist", "") { name -> newList = false; name?.let { openNewList = true; vm.createWatchlist(it) } }
 }
 
-/** One watchlist tab: "N items" with rename/delete, then its instruments. Tap a row to open it; ★ removes it. */
+private enum class WlSort(val label: String) { DEFAULT("Default"), CHANGE_DESC("% change: high to low"), CHANGE_ASC("% change: low to high"),
+    PRICE_DESC("Price: high to low"), PRICE_ASC("Price: low to high"), NAME("Name: A to Z") }
+private enum class WlFilter(val label: String) { ALL("All"), CALLS("Calls"), PUTS("Puts"), FUTURES("Futures"), STOCKS("Stocks") }
+
+/** One watchlist: a "Sort & Filter" menu (which also renames or deletes the list), then its rows. Tap a row for Buy/Sell. */
 @Composable
 fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watchlist, canDelete: Boolean) {
     val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
     var renaming by remember { mutableStateOf(false) }; var confirmDelete by remember { mutableStateOf(false) }
     var action by remember { mutableStateOf<WatchlistItemEntity?>(null) }
-    val sparks by vm.sparks.collectAsState()
+    var sort by rememberSaveable { mutableStateOf(WlSort.DEFAULT) }; var filter by rememberSaveable { mutableStateOf(WlFilter.ALL) }
+    var menu by remember { mutableStateOf(false) }
     DisposableEffect(list.id, list.items.size) { vm.subscribe("watchlist", list.items.map { it.symbol }.toSet()); onDispose { vm.unsubscribe("watchlist") } }
-    LaunchedEffect(list.id, list.items.size) { while (true) { vm.loadSparks(list.items.map { it.symbol }); kotlinx.coroutines.delay(60_000) } }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${list.items.size} ${if (list.items.size == 1) "item" else "items"}", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            IconButton({ renaming = true }, Modifier.testTag("rename_watchlist")) { Icon(Icons.Default.Edit, "Rename watchlist") }
-            if (canDelete) IconButton({ confirmDelete = true }, Modifier.testTag("delete_watchlist")) { Icon(Icons.Default.DeleteOutline, "Delete watchlist") }
+    val shown = list.items.filter { item -> val info = vm.info(item.symbol)
+        when (filter) {
+            WlFilter.ALL -> true; WlFilter.CALLS -> info?.optionType == com.papertrade.core.OptionType.CE
+            WlFilter.PUTS -> info?.optionType == com.papertrade.core.OptionType.PE; WlFilter.FUTURES -> info?.segment == com.papertrade.core.Segment.FUTURES
+            WlFilter.STOCKS -> item.symbol.endsWith("-EQ")
         }
-        if (list.items.isEmpty()) EmptyState(Icons.Default.StarBorder, "This watchlist is empty", "Search in Explore and tap ☆ to add a stock.")
-        else {
-            // Price column as wide as the widest price or change line in the list: charts still line up down the list, the
-            // percent is never cut off, and short values leave the name more room for the strike.
-            val measurer = rememberTextMeasurer(); val style = LocalTextStyle.current; val density = LocalDensity.current
-            val priceCol = list.items.maxOfOrNull { val q = quotes[it.symbol]
-                maxOf(measurer.measure(Fmt.changeLine(q?.change, q?.changePct), style.copy(fontSize = 13.sp)).size.width,
-                    measurer.measure(Fmt.rupee(q?.ltp), style.copy(fontSize = 15.sp)).size.width) }
-                ?.let { with(density) { it.toDp() } + 2.dp }?.coerceAtLeast(80.dp) ?: 80.dp
-            LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp)) {
-                items(list.items, key = { it.symbol }) { item -> Box(Modifier.testTag("wl_item_${item.symbol}")) {
-                    WatchRow(Fmt.labelParts(item.symbol, vm.info(item.symbol)), quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec()),
-                        sparks[item.symbol].orEmpty(), priceCol) { action = item } }
+    }.let { l ->
+        fun by(desc: Boolean, f: (WatchlistItemEntity) -> java.math.BigDecimal?) = l.sortedWith(compareBy(nullsLast(if (desc) reverseOrder() else naturalOrder()), f))
+        when (sort) {
+            WlSort.DEFAULT -> l; WlSort.CHANGE_DESC -> by(true) { quotes[it.symbol]?.changePct }; WlSort.CHANGE_ASC -> by(false) { quotes[it.symbol]?.changePct }
+            WlSort.PRICE_DESC -> by(true) { quotes[it.symbol]?.ltp }; WlSort.PRICE_ASC -> by(false) { quotes[it.symbol]?.ltp }
+            WlSort.NAME -> l.sortedBy { rowLabel(it.symbol, vm.info(it.symbol)).let { (a, b) -> "$a $b" } }
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box {
+                Row(Modifier.clickable { menu = true }.padding(vertical = 12.dp).testTag("sort_filter"), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sort & Filter", fontSize = 16.sp); Spacer(Modifier.width(6.dp)); Icon(Icons.Default.Tune, null, Modifier.size(18.dp))
+                }
+                DropdownMenu(menu, { menu = false }) {
+                    MenuHeader("Sort by")
+                    WlSort.values().forEach { s -> DropdownMenuItem({ Text(s.label, fontWeight = if (s == sort) FontWeight.SemiBold else FontWeight.Normal) }, { sort = s; menu = false },
+                        trailingIcon = { if (s == sort) Icon(Icons.Default.Check, null, tint = Accent) }) }
+                    HorizontalDivider(); MenuHeader("Show")
+                    WlFilter.values().forEach { f -> DropdownMenuItem({ Text(f.label, fontWeight = if (f == filter) FontWeight.SemiBold else FontWeight.Normal) }, { filter = f; menu = false },
+                        trailingIcon = { if (f == filter) Icon(Icons.Default.Check, null, tint = Accent) }) }
+                    HorizontalDivider()
+                    DropdownMenuItem({ Text("Rename watchlist") }, { menu = false; renaming = true }, Modifier.testTag("rename_watchlist"), leadingIcon = { Icon(Icons.Default.Edit, null) })
+                    if (canDelete) DropdownMenuItem({ Text("Delete watchlist") }, { menu = false; confirmDelete = true }, Modifier.testTag("delete_watchlist"), leadingIcon = { Icon(Icons.Default.DeleteOutline, null) })
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            if (sort != WlSort.DEFAULT || filter != WlFilter.ALL) Text(listOfNotNull(filter.takeIf { it != WlFilter.ALL }?.label, sort.takeIf { it != WlSort.DEFAULT }?.label).joinToString(" · "),
+                fontSize = 12.sp, color = Accent, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+        HorizontalDivider()
+        when {
+            list.items.isEmpty() -> EmptyState(Icons.Default.StarBorder, "This watchlist is empty", "Search in HOME and tap ☆ to add a stock.")
+            shown.isEmpty() -> Text("No ${filter.label.lowercase()} in this watchlist", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+            else -> LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
+                items(shown, key = { it.symbol }) { item -> Box(Modifier.testTag("wl_item_${item.symbol}")) {
+                    WatchRow(rowLabel(item.symbol, vm.info(item.symbol)), quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec())) { action = item } }
                 }
             }
         }
@@ -170,27 +295,50 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
         dismissButton = { TextButton({ confirmDelete = false }) { Text("Cancel") } })
 }
 
-/**
- * Groww watchlist row: name in bold over "Call"/"Put"/"Fut" (equities: just the ticker), today's mini chart in a
- * fixed column, price over change. [priceCol] is shared by the whole list so the charts line up.
- */
 @Composable
-private fun WatchRow(label: Pair<String, String?>, q: MarketQuote?, f: Freshness, closes: List<java.math.BigDecimal>, priceCol: Dp, onClick: () -> Unit) {
-    val fresh = f == Freshness.LIVE || f == Freshness.DEMO
+private fun MenuHeader(text: String) = Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+
+/** Row label: ("NIFTY", "03-NOV-26 23350 PE • NSE FO"), ("NIFTY", "24-NOV-26 FUT • NSE FO"), or ("RELIANCE", "NSE") for stocks. */
+private fun rowLabel(symbol: String, info: com.papertrade.app.data.market.InstrumentInfo?): Pair<String, String> {
+    // Demo symbols are "DEMO:…"; show the exchange the real contract trades on.
+    val exchange = symbol.substringBefore(':').takeIf { it != "DEMO" } ?: if (info?.underlying == "SENSEX") "BSE" else "NSE"
+    val e = info?.expiry ?: return symbol.substringAfter(':').removeSuffix("-EQ") to exchange
+    val what = info.optionType?.let { "${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${it.name}" } ?: "FUT"
+    return (info.underlying ?: symbol.substringAfter(':')) to "${e.format(rowDate).uppercase()} $what • $exchange FO"
+}
+private val rowDate = java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy", java.util.Locale.ENGLISH)
+
+/** Watchlist row: name over contract details on the left; price in the day's colour over "+₹32.55 (+5.22%)" on the right. */
+@Composable
+private fun WatchRow(label: Pair<String, String>, q: MarketQuote?, f: Freshness, onClick: () -> Unit) {
+    val fresh = f == Freshness.LIVE || f == Freshness.DEMO; val dim = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(label.first, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                label.second?.let { Text(it, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp)) }
+                Text(label.first, fontSize = 17.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(label.second, fontSize = 12.sp, color = dim, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
             }
-            Sparkline(closes, q?.ltp, q?.prevClose, q?.change, Modifier.padding(horizontal = 6.dp).size(width = 44.dp, height = 20.dp))
-            Column(Modifier.width(priceCol), horizontalAlignment = Alignment.End) {
-                Text(Fmt.rupee(q?.ltp), fontSize = 15.sp, color = if (fresh) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
-                Text(Fmt.changeLine(q?.change, q?.changePct), fontSize = 13.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant),
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(Fmt.rupee(q?.ltp), fontSize = 17.sp, color = if (fresh) Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface) else dim, maxLines = 1, softWrap = false)
+                Text(q?.change?.let { c -> "${if (c.signum() < 0) "-" else "+"}₹${Fmt.inr(c.abs())} (${Fmt.pct(q.changePct)})" } ?: "—", fontSize = 12.sp, color = dim,
                     maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 6.dp))
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+/** "Orders  Positions" as large text tabs in the ORDERS section, where the search bar sits elsewhere: selected dark, other grey. */
+@Composable
+private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+        listOf("Orders", "Positions").forEachIndexed { i, t ->
+            Text(t, fontSize = 22.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected == i) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = 8.dp, vertical = 8.dp).testTag("tab_$t"))
+        }
     }
 }
 
@@ -244,16 +392,20 @@ private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit
         dismissButton = { TextButton({ onDone(null) }) { Text("Cancel") } })
 }
 
-/** Stocks is this screen; F&O opens the NIFTY option chain; Mutual Funds doesn't exist here, so it only explains that; Loans opens Account (no loans in a paper app). */
+/** HOME, WATCHLIST, PORTFOLIO and ORDERS switch the main page; ACCOUNT opens settings. The selected item is blue, with no pill. */
 @Composable
-private fun BottomBar(onFno: () -> Unit, onAccount: () -> Unit, onUnavailable: (String) -> Unit) {
+private fun BottomBar(section: Section, onSection: (Section) -> Unit, onAccount: () -> Unit) {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-        listOf(Triple("Stocks", Icons.AutoMirrored.Filled.ShowChart, {}), Triple("F&O", Icons.Default.CandlestickChart, onFno),
-            Triple("Mutual Funds", Icons.Default.PieChart, { onUnavailable("Mutual Funds") }), Triple("Loans", Icons.Default.Payments, onAccount))
-            .forEachIndexed { i, (label, icon, onClick) ->
-                NavigationBarItem(selected = i == 0, onClick = onClick, icon = { Icon(icon, null) }, label = { Text(label, fontSize = 11.sp, maxLines = 1) },
-                    modifier = Modifier.testTag("bottom_$label"))
+        val colors = NavigationBarItemDefaults.colors(selectedIconColor = Accent, selectedTextColor = Accent, indicatorColor = Color.Transparent,
+            unselectedIconColor = MaterialTheme.colorScheme.onSurface, unselectedTextColor = MaterialTheme.colorScheme.onSurface)
+        listOf(Triple(Section.HOME, Icons.Outlined.Home, Icons.Filled.Home), Triple(Section.WATCHLIST, Icons.Outlined.StarBorder, Icons.Filled.Stars),
+            Triple(Section.PORTFOLIO, Icons.Outlined.Folder, Icons.Filled.Folder), Triple(Section.ORDERS, Icons.Outlined.ContentPaste, Icons.Filled.ContentPaste))
+            .forEach { (s, icon, selectedIcon) ->
+                NavigationBarItem(selected = section == s, onClick = { onSection(s) }, icon = { Icon(if (section == s) selectedIcon else icon, null) },
+                    label = { Text(s.name, fontSize = 10.sp, maxLines = 1, softWrap = false) }, colors = colors, modifier = Modifier.testTag("bottom_${s.name}"))
             }
+        NavigationBarItem(selected = false, onClick = onAccount, icon = { Icon(Icons.Outlined.AccountBalanceWallet, null) },
+            label = { Text("ACCOUNT", fontSize = 10.sp, maxLines = 1, softWrap = false) }, colors = colors, modifier = Modifier.testTag("bottom_ACCOUNT"))
     }
 }
 
@@ -307,7 +459,7 @@ fun ExploreScreen(vm: AppVM, nav: Nav) {
                     onToggle = { picking = i })
             }
         } }
-        if (results == null) item { Text("Your watchlists are the tabs after Orders. Search for a stock and tap ☆ to add it to one.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (results == null) item { Text("Search for a stock and tap ☆ to add it to a watchlist.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
     picking?.let { i -> WatchlistPicker(lists, i.symbol, onDismiss = { picking = null }) { w, add ->
         if (add) { vm.register(i); vm.addToWatchlist(w.id, i.symbol, i.name) } else vm.removeFromWatchlist(w.id, i.symbol)
