@@ -312,7 +312,7 @@ class FyersProvider(
             if (symOf.isEmpty()) return@channelFlow
             // Symbols the socket can't carry (over the plan's cap, or no token) are polled over REST so they never go stale.
             // Standard's 5,000/day can't afford 3 s polling all session, so these get 15 s there.
-            val streamed = symOf.values.toSet(); val leftover = syms.filter { it !in streamed }
+            val streamed = symOf.values.toSet(); val leftover = syms.filter { it !in streamed && it !in unknownSymbols }
             val poller = if (leftover.isEmpty()) null else launch {
                 while (true) { quotes(leftover).onSuccess { it.forEach { q -> send(q) } }; delay(if (prime) pollIntervalMs else 15_000L) }
             }
@@ -370,9 +370,15 @@ class FyersProvider(
 
     /** Symbol -> HSM topic. Looked up once per symbol via FYERS' symbol-token API (as the official SDK does) and remembered. */
     private val topicCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    /** Symbols FYERS doesn't list (expired contracts left in a watchlist): not polled, since every request for them fails. */
+    private val unknownSymbols = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private suspend fun topics(symbols: List<String>): Map<String, String> {
-        val missing = symbols.filter { !topicCache.containsKey(it) }
-        missing.chunked(500).forEach { chunk -> symbolTokens(chunk).forEach { (sym, fyToken) -> FyersHsm.topic(sym, fyToken)?.let { topicCache[sym] = it } } }
+        val missing = symbols.filter { !topicCache.containsKey(it) && it !in unknownSymbols }
+        missing.chunked(500).forEach { chunk ->
+            val tokens = symbolTokens(chunk)
+            tokens.forEach { (sym, fyToken) -> FyersHsm.topic(sym, fyToken)?.let { topicCache[sym] = it } }
+            unknownSymbols += chunk.filter { it !in tokens }
+        }
         return symbols.mapNotNull { s -> topicCache[s]?.let { s to it } }.toMap()
     }
 
