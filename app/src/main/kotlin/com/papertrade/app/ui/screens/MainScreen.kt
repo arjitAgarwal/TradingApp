@@ -42,6 +42,7 @@ import com.papertrade.app.data.db.WatchlistItemEntity
 import com.papertrade.app.data.repo.LoginState
 import com.papertrade.app.ui.*
 import com.papertrade.app.ui.components.*
+import com.papertrade.app.ui.theme.Demo
 import com.papertrade.app.ui.theme.Gain
 import com.papertrade.app.ui.theme.Loss
 import com.papertrade.core.Side
@@ -96,6 +97,8 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
         Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
+            // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode.
+            Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
             MarketTicker(vm, nav.index)
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
