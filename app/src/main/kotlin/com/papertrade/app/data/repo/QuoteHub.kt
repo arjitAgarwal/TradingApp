@@ -50,9 +50,11 @@ class QuoteHub(
         scope.launch {
             // Short grace period before pausing, so a rotation or quick app switch doesn't restart polling.
             val visible = foreground.debounce { if (it) 0L else 10_000L }.distinctUntilChanged()
-            combine(_provider, subs, repo.activeSymbols, visible) { p, s, a, v -> Triple(p, s.values.flatten().toSet() + a + Underlying.values().map { it.indexSymbol }, v) }
+            // Priority order: positions and open orders first, then indices, then screen subscriptions. A provider that can
+            // stream only some symbols keeps the first ones, so held positions never lose the live feed to a long option chain.
+            combine(_provider, subs, repo.activeSymbols, visible) { p, s, a, v -> Triple(p, (a + Underlying.values().map { it.indexSymbol } + s.values.flatten()).toList(), v) }
                 .distinctUntilChanged()
-                .flatMapLatest { (p, symbols, v) -> if (v) p.quoteStream(symbols) else emptyFlow() }
+                .flatMapLatest { (p, symbols, v) -> if (v) p.quoteStream(symbols.toSet()) else emptyFlow() }
                 .collect { q ->
                     _latest.update { it + (q.symbol to q) }
                     if (q.source != QuoteSource.DEMO) runCatching { cache.upsertQuotes(listOf(q.toCacheEntity())) }

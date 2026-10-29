@@ -9,6 +9,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -304,17 +305,25 @@ class FyersProvider(
      * The socket doesn't count against the REST quota, which is what makes the Standard plan's 5,000/day last a full session.
      */
     override fun quoteStream(symbols: Set<String>): Flow<MarketQuote> = streamingQuoteStream(symbols, { pollIntervalMs }, clock, status, ::quotes) { syms ->
-        flow {
+        channelFlow {
             val token = credentials.accessToken() ?: throw ProviderException("FYERS login needed", ProviderException.Kind.NOT_CONFIGURED)
             val key = FyersHsm.hsmKey(token) ?: throw ProviderException("FYERS login has no live-feed key; log in again", ProviderException.Kind.AUTH)
             val symOf = topics(syms.toList()).entries.take(maxStreamSymbols).associate { (sym, topic) -> topic to sym }
-            if (symOf.isEmpty()) return@flow
-            val last = HashMap<String, MarketQuote>()
-            socket(key, symOf.keys.toList()).collect { u ->
-                val sym = symOf[u.topic] ?: return@collect
-                val now = clock()
-                merge(last[sym], sym, u, now)?.let { q -> last[sym] = q; emit(q) }
+            if (symOf.isEmpty()) return@channelFlow
+            // Symbols the socket can't carry (over the plan's cap, or no token) are polled over REST so they never go stale.
+            // Standard's 5,000/day can't afford 3 s polling all session, so these get 15 s there.
+            val streamed = symOf.values.toSet(); val leftover = syms.filter { it !in streamed }
+            val poller = if (leftover.isEmpty()) null else launch {
+                while (true) { quotes(leftover).onSuccess { it.forEach { q -> send(q) } }; delay(if (prime) pollIntervalMs else 15_000L) }
             }
+            val last = HashMap<String, MarketQuote>()
+            try {
+                socket(key, symOf.keys.toList()).collect { u ->
+                    val sym = symOf[u.topic] ?: return@collect
+                    val now = clock()
+                    merge(last[sym], sym, u, now)?.let { q -> last[sym] = q; send(q) }
+                }
+            } finally { poller?.cancel() }
         }
     }
 

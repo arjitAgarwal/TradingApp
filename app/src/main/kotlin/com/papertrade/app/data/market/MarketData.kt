@@ -92,6 +92,9 @@ interface MarketDataProvider {
     /** [expiry] null = nearest expiry the provider lists. */
     suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int = 12): Result<OptionChain>
     suspend fun candles(symbol: String, interval: CandleInterval): Result<List<Candle>>
-    /** Emits quotes for [symbols]. Implementations poll or stream; callers must tolerate duplicates and gaps. */
+    /**
+     * Emits quotes for [symbols], which are in priority order (the set's iteration order). Implementations poll or stream;
+     * one that can stream only some symbols streams the first ones. Callers must tolerate duplicates and gaps.
+     */
     fun quoteStream(symbols: Set<String>): Flow<MarketQuote>
 }
