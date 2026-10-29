@@ -51,6 +51,10 @@ places a real order or moves money. Network use is read-only market data.
 
 ## Workflow
 - Show emulator screenshots for UI changes and let the user verify them. Commit and push only when the user says so.
-- Active branch: `version2` (main branch: `master`).
+- Branches (main branch: `master`):
+  - `version2`: backend and bug fixes (engine, accounting, market data, repositories). Every non-UI fix lands here first.
+  - `grow`: the Groww-like UI. `Angel`: a new, different UI. Both branch from `version2` and hold only their own UI work.
+  - Bring fixes into the UI branches by merging `version2` into them; never merge UI work back into `version2`.
+  - When a fix is found while working on a UI branch, make it on `version2` and then merge it across.
 - "Generate the apk" means: build the debug APK and copy it to `C:\Users\Arjit\Desktop\Alpha\alpha_vN.apk`, where N is
   one more than the highest version already in that folder. Never overwrite an existing APK.
