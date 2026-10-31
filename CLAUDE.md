@@ -62,6 +62,8 @@ places a real order or moves money. Network use is read-only market data.
   - `grow`: the Groww-like UI. `Angel`: a new, different UI. Both branch from `version2` and hold only their own UI work.
   - Bring fixes into the UI branches by merging `version2` into them; never merge UI work back into `version2`.
   - When a fix is found while working on a UI branch, make it on `version2` and then merge it across.
+  - `Angel_tmp` is the user's copy of `Angel` with their own commits on top. Whenever anything is merged into `Angel`,
+    also merge `Angel` into `Angel_tmp` and push both. Never merge `Angel_tmp` back into `Angel` or `version2`.
 - "Generate the apk" means: build the debug APK and copy it to `C:\Users\Arjit\Desktop\Alpha\`, named after the branch:
   `alpha_vN.apk` from `version2`, `alpha_grow_vN.apk` from `grow`, `alpha_angel_vN.apk` from `Angel`. N is one more than
   the highest number already used by that prefix (each counts on its own). Never overwrite an existing APK. Each prefix
