@@ -182,6 +182,18 @@ class FyersProvider(
         }
     }
 
+    /** FYERS /depth: five bids ("bids") and asks ("ask") as {price, volume, ord}, with o/h/l and c (previous close). */
+    override suspend fun depth(symbol: String) = runCatching {
+        val d = (getJson("$dataBase/depth?symbol=${enc(symbol)}&ott_flag=1")["d"] as? JsonObject)?.get(symbol) as? JsonObject
+            ?: throw ProviderException("No market depth for $symbol", ProviderException.Kind.UNSUPPORTED)
+        fun side(key: String) = (d[key] as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e.jsonObject; val p = o["price"].dec()?.takeIf { it.signum() > 0 } ?: return@mapNotNull null
+            DepthLevel(p, o["volume"].lng() ?: 0L)
+        }
+        MarketDepth(symbol, side("bids"), side("ask"), d["totalbuyqty"].lng(), d["totalsellqty"].lng(),
+            d["o"].dec(), d["h"].dec(), d["l"].dec(), d["c"].dec(), clock())
+    }
+
     // ---- symbol master (lot size / tick / expiry / strike come from here, never hardcoded) ----
     private class MasterRow(val ticker: String, val name: String, val lot: Int, val tick: BigDecimal, val expiry: LocalDate?, val underlying: String, val strike: BigDecimal?, val opt: OptionType?)
     private val masterMutex = Mutex()

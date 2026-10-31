@@ -66,6 +66,22 @@ data class OptionChain(
     val source: QuoteSource,
 )
 
+/** One price level of the order book: price and the quantity (units, not lots) resting there. */
+data class DepthLevel(val price: BigDecimal, val qty: Long)
+/** Best five bids and asks with the day's open/high/low and previous close, for the quote sheet. */
+data class MarketDepth(
+    val symbol: String,
+    val bids: List<DepthLevel>,
+    val asks: List<DepthLevel>,
+    val totalBuyQty: Long?,
+    val totalSellQty: Long?,
+    val open: BigDecimal?,
+    val high: BigDecimal?,
+    val low: BigDecimal?,
+    val prevClose: BigDecimal?,
+    val asOf: Instant,
+)
+
 data class FutureContract(val info: InstrumentInfo, val quote: MarketQuote?)
 data class Candle(val time: Instant, val open: BigDecimal, val high: BigDecimal, val low: BigDecimal, val close: BigDecimal, val volume: Long)
 
@@ -98,6 +114,9 @@ interface MarketDataProvider {
      */
     suspend fun stockOptionChain(symbol: String, expiry: LocalDate?, strikesEachSide: Int = 12): Result<OptionChain> =
         Result.failure(ProviderException("$displayName can't show stock option chains yet", ProviderException.Kind.UNSUPPORTED))
+    /** Market depth (best five each side) for one symbol; [ProviderException.Kind.UNSUPPORTED] where a provider has none. */
+    suspend fun depth(symbol: String): Result<MarketDepth> =
+        Result.failure(ProviderException("$displayName can't show market depth yet", ProviderException.Kind.UNSUPPORTED))
     suspend fun candles(symbol: String, interval: CandleInterval): Result<List<Candle>>
     /**
      * Emits quotes for [symbols], which are in priority order (the set's iteration order). Implementations poll or stream;

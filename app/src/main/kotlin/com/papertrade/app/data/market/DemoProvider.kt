@@ -119,6 +119,16 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
     private fun priceAt(s: String, at: Instant): Double? = bases[s]?.let { spot(it, s, at) }
         ?: rootOf(s)?.let { r -> derivativePrice(s, r, spot(bases.getValue(r.spotSymbol), r.spotSymbol, at)) }
 
+    /** Five made-up levels each side, a tick apart from the demo bid/ask; quantities are whole lots and fixed per symbol. */
+    override suspend fun depth(symbol: String) = runCatching {
+        val q = quotes(listOf(symbol)).getOrThrow().singleOrNull() ?: throw ProviderException("No demo price for $symbol", ProviderException.Kind.UNSUPPORTED)
+        val lotSize = rootOf(symbol)?.lot ?: 1; val tickSize = BigDecimal("0.05")
+        fun qty(i: Int, side: Int) = lotSize.toLong() * (1 + abs((symbol.hashCode() + i * 31 + side * 7) % 9))
+        val bids = (0 until 5).map { i -> DepthLevel(q.bid!! - tickSize * BigDecimal(i), qty(i, 1)) }
+        val asks = (0 until 5).map { i -> DepthLevel(q.ask!! + tickSize * BigDecimal(i), qty(i, 2)) }
+        MarketDepth(symbol, bids, asks, bids.sumOf { it.qty } * 20, asks.sumOf { it.qty } * 20, q.open, q.high, q.low, q.prevClose, q.timestamp)
+    }
+
     override suspend fun searchEquities(query: String) = runCatching {
         equities.filter { it.key.contains(query, true) || it.value.first.contains(query, true) }.map { (s, v) -> info(s, v.first) }
     }
