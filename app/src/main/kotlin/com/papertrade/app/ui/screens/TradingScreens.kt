@@ -457,6 +457,11 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
                 IntField("Partial-fill cap per tick (0 = off)", settings.partialFillCap) { vm.saveSettings(settings.copy(partialFillCap = it.coerceAtLeast(0))) }
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Switch(settings.chargesEnabled, { vm.saveSettings(settings.copy(chargesEnabled = it)) }); Text("  Apply illustrative charges") }
                 Text("Charge rates and margin percentages are illustrative assumptions, not official broker/exchange figures.", fontSize = 11.sp)
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Switch(settings.testClosedMarket, { vm.saveSettings(settings.copy(testClosedMarket = it)) }, Modifier.testTag("test_closed_market")); Text("  Test trading when the market is closed")
+                }
+                Text(if (settings.testClosedMarket) "On: orders fill at the last available price, even after hours. Turn off for normal trading."
+                    else "Off: market orders need a live price, as in the real market.", fontSize = 11.sp)
             } }
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Backup", fontWeight = FontWeight.SemiBold)
