@@ -23,7 +23,7 @@ fun git(vararg args: String): String = runCatching {
     providers.exec { commandLine("git", *args); isIgnoreExitValue = true }.standardOutput.asText.get().trim()
 }.getOrDefault("")
 val branch = git("rev-parse", "--abbrev-ref", "HEAD")
-val (idSuffix, appLabel) = when (branch) { "grow" -> ".grow" to "ALPHA Grow"; "Angel" -> ".angel" to "ALPHA Angel"; else -> "" to "ALPHA" }
+val (idSuffix, appLabel) = when (branch) { "grow" -> ".grow" to "ALPHA Grow"; "Angel" -> ".angel" to "Angel Alpha"; else -> "" to "ALPHA" }
 val commitCount = git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
 
 android {
