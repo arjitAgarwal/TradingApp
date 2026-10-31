@@ -184,7 +184,7 @@ class FyersProvider(
 
     /** FYERS /depth: five bids ("bids") and asks ("ask") as {price, volume, ord}, with o/h/l and c (previous close). */
     override suspend fun depth(symbol: String) = runCatching {
-        val d = (getJson("$dataBase/depth?symbol=${enc(symbol)}&ott_flag=1")["d"] as? JsonObject)?.get(symbol) as? JsonObject
+        val d = (getJson("$dataBase/depth?symbol=${enc(symbol)}&ohlcv_flag=1")["d"] as? JsonObject)?.get(symbol) as? JsonObject
             ?: throw ProviderException("No market depth for $symbol", ProviderException.Kind.UNSUPPORTED)
         fun side(key: String) = (d[key] as? JsonArray).orEmpty().mapNotNull { e ->
             val o = e.jsonObject; val p = o["price"].dec()?.takeIf { it.signum() > 0 } ?: return@mapNotNull null
