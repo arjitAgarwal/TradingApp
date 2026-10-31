@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon's picture: drawable-nodpi/app_logo.png. The inset keeps the triangle well inside every launcher
+     shape; the circle's edge falls outside the mask, so only the blue background (ic_launcher_background) shows around
+     it. To change the logo, replace that PNG with another square image of the same name. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/app_logo"
+    android:inset="10dp" />
