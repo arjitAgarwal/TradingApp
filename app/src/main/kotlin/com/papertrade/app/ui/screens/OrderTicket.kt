@@ -35,6 +35,7 @@ import com.papertrade.app.ui.AppVM
 import com.papertrade.app.ui.Fmt
 import com.papertrade.app.ui.theme.Gain
 import com.papertrade.app.ui.theme.Loss
+import com.papertrade.app.ui.theme.Warn
 import com.papertrade.core.*
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -59,6 +60,7 @@ fun OrderScreen(vm: AppVM, symbol: String, side: Side, nav: Nav) {
 @Composable
 private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -> Unit) {
     val q = vm.quotes.collectAsState().value[info.symbol]
+    val testMode = vm.settings.collectAsState().value.testClosedMarket
     val valuation by vm.valuation.collectAsState()
     val fno = info.segment != Segment.EQUITY
     val lot = if (fno) info.lotSize else 1
@@ -82,7 +84,7 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
         shares <= 0 -> "Enter a quantity."
         shares % lot != 0 -> "Quantity must be a multiple of the lot size ($lot)."
         type == OrderType.MARKET && q == null -> "No live price right now. Use a limit price."
-        type == OrderType.MARKET && q?.source == QuoteSource.CACHED -> "Market is closed. Market orders are off; use a limit price."
+        type == OrderType.MARKET && q?.source == QuoteSource.CACHED && !testMode -> "Market is closed. Market orders are off; use a limit price."
         type == OrderType.LIMIT && (lp == null || lp.signum() <= 0) -> "Enter a limit price."
         else -> null
     }
@@ -147,6 +149,9 @@ private fun OrderPage(info: InstrumentInfo, vm: AppVM, side: Side, onClose: () -
                     Text("Add stoploss/target", fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.align(Alignment.End).padding(top = 16.dp)
                         .dashedUnderline(MaterialTheme.colorScheme.onSurface).clickable { vm.messages.tryEmit("Stoploss/target is coming next") })
                     Spacer(Modifier.weight(1f))
+                    // Test mode is on and the price isn't live: say so, so a test fill is never mistaken for a real-market one.
+                    if (testMode && q?.source == QuoteSource.CACHED) Text("Test mode: market is closed, so this fills at the last price.", color = Warn, textAlign = TextAlign.Center,
+                        fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag("test_mode_note"))
                     problem?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, fontSize = 14.sp,
                             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(12.dp)).padding(14.dp).testTag("order_problem"))

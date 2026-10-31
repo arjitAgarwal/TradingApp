@@ -33,7 +33,8 @@ fun QuoteHeader(q: MarketQuote?, vm: AppVM) {
         Text(Fmt.inr(q?.ltp), fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Text("${Fmt.signed(q?.change)}  (${Fmt.pct(q?.changePct)})", color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface))
         FreshnessChip(freshnessOf(q, now, vm.maxAgeSec()), q?.let { Fmt.time(it.timestamp) })
-        if (q?.source == com.papertrade.core.QuoteSource.CACHED) Text("Previous / cached quote — not a live price. Market orders are disabled.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+        if (q?.source == com.papertrade.core.QuoteSource.CACHED) Text(if (vm.settings.collectAsState().value.testClosedMarket) "Previous / cached quote — not a live price. Test mode is on: orders fill at this price."
+            else "Previous / cached quote — not a live price. Market orders are disabled.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
     }
 }
 

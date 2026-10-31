@@ -10,6 +10,8 @@
 
 **Limit orders:** fill when BUY ref ≤ limit / SELL ref ≥ limit, at the reference price (so gaps give price improvement, never worse than limit). Marketable limits fill at placement. Each order evaluates a given quote timestamp once; unchanged/older ticks and stale/cached quotes never fill, so a UI refresh cannot fill an order. Open orders survive market close.
 
+**Test mode (off by default):** Account → "Test trading when the market is closed" (`ExecutionConfig.allowClosedMarketFills`) drops the CACHED and max-age checks, so market and limit orders fill at the last available price after hours. Invalid prices still never fill, and the once-per-quote-timestamp rule still applies. The order ticket says when a fill would use a closed-market price.
+
 **Partial fills (optional):** cap per evaluation; remainder keeps working on later fresh quotes.
 
 **State machine:** CREATED→OPEN|REJECTED|CANCELLED; OPEN→PARTIALLY_FILLED|FILLED|CANCELLED|REJECTED; PARTIALLY_FILLED→PARTIALLY_FILLED|FILLED|CANCELLED. Terminal states are final. Fill ids are `<orderId>-F<n>` and are primary keys, so a fill applies exactly once.
