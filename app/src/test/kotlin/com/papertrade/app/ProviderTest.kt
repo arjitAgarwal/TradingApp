@@ -26,6 +26,12 @@ class ProviderTest {
         assertEquals(11, c.rows.size); assertTrue(c.expiries.isNotEmpty())
         c.rows.forEach { r -> assertEquals(Segment.OPTION, r.call!!.info!!.segment); assertTrue(r.call!!.info!!.lotSize > 0) }
     }
+    @Test fun demoExpiriesFollowEachIndexsWeekday() = runBlocking {
+        // `fixed` is Friday 16 Oct 2026: NIFTY expires on Tuesdays, SENSEX on Thursdays.
+        assertEquals(java.time.LocalDate.of(2026, 10, 20), demo.optionChain(Underlying.NIFTY, null, 1).getOrThrow().expiries.first())
+        assertEquals(java.time.LocalDate.of(2026, 10, 22), demo.optionChain(Underlying.SENSEX, null, 1).getOrThrow().expiries.first())
+        assertEquals(java.time.LocalDate.of(2026, 10, 20), demo.futures(Underlying.NIFTY).getOrThrow().first().info.expiry)
+    }
 
     @Test fun fyersDailyLimitStopsFurtherRequestsUntilTomorrow() = runBlocking {
         var sent = 0

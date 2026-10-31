@@ -55,9 +55,11 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
             timestamp = at, source = QuoteSource.DEMO)
     }
 
-    private fun nextThursdays(n: Int): List<LocalDate> {
+    /** The next [n] weekly expiries, today included: NIFTY expires on Tuesdays, SENSEX on Thursdays (holidays ignored). */
+    private fun nextExpiries(u: Underlying, n: Int): List<LocalDate> {
+        val day = when (u) { Underlying.NIFTY -> DayOfWeek.TUESDAY; Underlying.SENSEX -> DayOfWeek.THURSDAY }
         var d = clock().atZone(zone).toLocalDate(); val out = mutableListOf<LocalDate>()
-        while (out.size < n) { if (d.dayOfWeek == DayOfWeek.THURSDAY && !d.isBefore(clock().atZone(zone).toLocalDate())) out += d; d = d.plusDays(1) }
+        while (out.size < n) { if (d.dayOfWeek == day) out += d; d = d.plusDays(1) }
         return out
     }
 
@@ -107,14 +109,14 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
 
     override suspend fun futures(underlying: Underlying) = runCatching {
         val now = clock()
-        nextThursdays(3).map { e ->
+        nextExpiries(underlying, 3).map { e ->
             val i = InstrumentInfo(futSymbol(underlying, e), "${underlying.displayName} FUT $e (demo)", Segment.FUTURES, lot.getValue(underlying), BigDecimal("0.05"), e, underlying = underlying.name)
             FutureContract(i, demoDerivativeQuote(i.symbol, now))
         }
     }
 
     override suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
-        val now = clock(); val expiries = nextThursdays(3); val e = expiry ?: expiries.first()
+        val now = clock(); val expiries = nextExpiries(underlying, 3); val e = expiry ?: expiries.first()
         val spot = spot(bases.getValue(underlying.indexSymbol), underlying.indexSymbol, now)
         val st = step.getValue(underlying); val atm = (Math.round(spot / st) * st).toInt()
         val rows = (-strikesEachSide..strikesEachSide).map { k ->
