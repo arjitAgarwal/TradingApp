@@ -30,7 +30,7 @@ class MarketDepthTest {
         val creds = object : FyersCredentials { override suspend fun appId() = "APP"; override suspend fun accessToken() = "TOKEN" }
         val d = FyersProvider(creds, kotlin.io.path.createTempDirectory("fyers").toFile(), http, clock = { fixed }, dataBase = "https://fyers.test/data")
             .depth(sym).getOrThrow()
-        assertTrue(urls.single().contains("/depth?symbol="))
+        assertTrue(urls.single().contains("/depth?symbol=")); assertTrue("FYERS needs ohlcv_flag", urls.single().endsWith("&ohlcv_flag=1"))
         assertEquals(5, d.bids.size); assertEquals(5, d.asks.size)
         assertEquals(BigDecimal("342.1"), d.bids[0].price); assertEquals(520L, d.bids[0].qty)
         assertEquals(BigDecimal("346.35"), d.asks[0].price); assertEquals(10075L, d.totalBuyQty); assertEquals(21710L, d.totalSellQty)
