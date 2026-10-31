@@ -7,14 +7,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.papertrade.app.R
 
 // Groww-like palette: clean white surfaces, a single green accent, muted grey text.
 val Gain = Color(0xFF00B386)
@@ -46,17 +41,12 @@ private val Dark = darkColorScheme(
     error = Color(0xFFFF7A5C), errorContainer = Color(0xFF3D1A12), onErrorContainer = Color(0xFFFFD6CC),
 )
 
-/** Inter (variable font, bundled; SIL OFL, see docs/licenses/Inter-OFL.txt): the closest free match to Groww's typeface. */
-@OptIn(ExperimentalTextApi::class)
-private fun inter(w: FontWeight) = Font(R.font.inter, w, variationSettings = FontVariation.Settings(FontVariation.weight(w.weight)))
-val Inter = FontFamily(listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold).map(::inter))
-
-// Every text style uses Inter with tabular figures, so prices line up in columns.
+// The system font (Roboto) with proportional digits, as in the reference screenshots; no extra tracking.
 private val AppType = Typography().run {
-    fun TextStyle.inter() = copy(fontFamily = Inter, fontFeatureSettings = "tnum", letterSpacing = 0.sp) // Material's default tracking looks loose with Inter
-    Typography(displayLarge.inter(), displayMedium.inter(), displaySmall.inter(), headlineLarge.inter(), headlineMedium.inter(), headlineSmall.inter(),
-        titleLarge.inter(), titleMedium.inter(), titleSmall.inter(), bodyLarge.inter(), bodyMedium.inter(), bodySmall.inter(),
-        labelLarge.inter(), labelMedium.inter(), labelSmall.inter())
+    fun TextStyle.flat() = copy(fontFamily = FontFamily.Default, letterSpacing = 0.sp)
+    Typography(displayLarge.flat(), displayMedium.flat(), displaySmall.flat(), headlineLarge.flat(), headlineMedium.flat(), headlineSmall.flat(),
+        titleLarge.flat(), titleMedium.flat(), titleSmall.flat(), bodyLarge.flat(), bodyMedium.flat(), bodySmall.flat(),
+        labelLarge.flat(), labelMedium.flat(), labelSmall.flat())
 }
 
 @Composable

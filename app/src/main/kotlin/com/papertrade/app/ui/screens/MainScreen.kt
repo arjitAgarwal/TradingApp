@@ -2,19 +2,13 @@ package com.papertrade.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Stars
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.AddCircleOutline
-import androidx.compose.material.icons.outlined.ContentPaste
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.StarBorder
 import com.papertrade.app.ui.theme.Accent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -114,7 +108,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
             // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode.
             Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
-            if (section == Section.ORDERS) OrdersTabs(ordersTab) { ordersTab = it } else SearchBar { section = Section.HOME }
+            if (section == Section.ORDERS) OrdersTabs(ordersTab, { ordersTab = it }, onSearch = { section = Section.HOME }, onMenu = nav.account) else SearchBar { section = Section.HOME }
             IndexCards(vm, nav.index)
             HorizontalDivider()
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
@@ -136,12 +130,12 @@ fun MainScreen(vm: AppVM, nav: Nav) {
 /** Grey strip with a rounded search box; tapping it opens HOME, where stocks are searched. */
 @Composable
 private fun SearchBar(onClick: () -> Unit) {
-    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)).padding(horizontal = 16.dp, vertical = 12.dp)) {
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface)
+    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)).padding(horizontal = 17.dp, vertical = 13.dp)) {
+        Row(Modifier.fillMaxWidth().height(39.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)).clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp).testTag("header_search"), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(12.dp))
-            Text("Search for Reliance, Tata", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            .padding(horizontal = 12.dp).testTag("header_search"), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Search, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(12.dp))
+            Text("Search for Reliance, Tata", fontSize = 14.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -158,22 +152,23 @@ private fun IndexCards(vm: AppVM, onIndex: (Underlying) -> Unit) {
         Underlying.values().forEachIndexed { i, u ->
             if (i > 0) VerticalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
             val q = quotes[u.indexSymbol]
-            val fresh = freshnessOf(q, now, vm.maxAgeSec()).let { it == Freshness.LIVE || it == Freshness.DEMO }
-            val c = if (fresh) Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface) else MaterialTheme.colorScheme.onSurfaceVariant
-            Column(Modifier.weight(1f).clickable { onIndex(u) }.padding(horizontal = 8.dp, vertical = 10.dp).testTag("ticker_${u.name}")) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(u.name, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            val c = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface) // by direction even when the market is shut
+            // 8 dp from the screen edge, 12 dp after the divider; 53 dp tall in all.
+            Column(Modifier.weight(1f).clickable { onIndex(u) }.padding(start = if (i == 0) 8.dp else 12.dp, end = if (i == 0) 12.dp else 6.dp, top = 8.dp, bottom = 6.dp).testTag("ticker_${u.name}")) {
+                Row(Modifier.height(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(u.name, fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f))
                     expiries[u]?.let { e -> val soon = !e.isAfter(today.plusDays(1))
-                        Text(expiryChip(e, today), fontSize = 12.sp, maxLines = 1, softWrap = false,
-                            modifier = Modifier.background(if (soon) Gain.copy(alpha = 0.14f) else Accent.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+                        Box(Modifier.fillMaxHeight().background(if (soon) Gain.copy(alpha = 0.14f) else Accent.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp), contentAlignment = Alignment.Center) {
+                            Text(expiryChip(e, today), fontSize = 11.sp, lineHeight = 14.sp, maxLines = 1, softWrap = false)
+                        }
                     }
                 }
-                Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(Fmt.inr(q?.ltp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = c, maxLines = 1, softWrap = false)
-                    q?.change?.takeIf { it.signum() != 0 }?.let { Text(if (it.signum() > 0) "▲" else "▼", fontSize = 10.sp, color = c, modifier = Modifier.padding(start = 2.dp)) }
+                Row(Modifier.padding(top = 2.dp).height(19.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(Fmt.inr(q?.ltp), fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = c, maxLines = 1, softWrap = false)
+                    q?.change?.takeIf { it.signum() != 0 }?.let { Text(if (it.signum() > 0) "▲" else "▼", fontSize = 10.sp, lineHeight = 12.sp, color = c, modifier = Modifier.padding(start = 3.dp)) }
                     Spacer(Modifier.weight(1f)); Spacer(Modifier.width(4.dp))
                     // A ~180dp half on a 360dp phone can't always hold a big SENSEX move at full size, so this one shrinks to fit.
-                    FitText("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", 12.sp, MaterialTheme.colorScheme.onSurfaceVariant)
+                    FitText("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", 12.sp, MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -184,7 +179,7 @@ private fun IndexCards(vm: AppVM, onIndex: (Underlying) -> Unit) {
 @Composable
 private fun FitText(text: String, size: androidx.compose.ui.unit.TextUnit, color: Color, min: androidx.compose.ui.unit.TextUnit = 8.sp) {
     var fs by remember(text.length, size) { mutableStateOf(size) } // keyed on length so ticking prices don't re-fit every second
-    Text(text, fontSize = fs, color = color, maxLines = 1, softWrap = false, onTextLayout = { if (it.hasVisualOverflow && fs > min) fs *= 0.92f })
+    Text(text, fontSize = fs, lineHeight = fs * 1.25f, color = color, maxLines = 1, softWrap = false, onTextLayout = { if (it.hasVisualOverflow && fs > min) fs *= 0.92f })
 }
 
 private fun expiryChip(e: java.time.LocalDate, today: java.time.LocalDate) = "Expiry " + when (val d = java.time.temporal.ChronoUnit.DAYS.between(today, e)) {
@@ -193,33 +188,39 @@ private fun expiryChip(e: java.time.LocalDate, today: java.time.LocalDate) = "Ex
         else e.format(java.time.format.DateTimeFormatter.ofPattern("dd MMM", java.util.Locale.ENGLISH))
 }
 
-/** Watchlist names as tabs (selected in blue), a fixed ⊕ on the right, then the selected list. */
+/** A fixed "Options" tab, then the watchlist names as tabs (selected in blue), a fixed ⊕ on the right, then the selected page. */
 @Composable
 private fun WatchlistsPage(vm: AppVM, nav: Nav) {
     val lists by vm.watchlists.collectAsState()
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) } // 0 is Options; watchlist i is tab i + 1
     var newList by remember { mutableStateOf(false) }; var openNewList by remember { mutableStateOf(false) }
     LaunchedEffect(lists.size) {
-        if (openNewList) { tab = lists.size - 1; openNewList = false } // jump to the list just created
-        else if (tab >= lists.size) tab = 0 // its watchlist was deleted
+        if (openNewList) { tab = lists.size; openNewList = false } // jump to the list just created
+        else if (tab > lists.size) tab = 0 // its watchlist was deleted
     }
-    val selected = tab.coerceIn(0, (lists.size - 1).coerceAtLeast(0)) // never index past the tabs while a deletion settles
+    val selected = tab.coerceIn(0, lists.size) // never index past the tabs while a deletion settles
+    val tabs = listOf("Options" to "tab_options") + lists.map { it.name to "tab_wl_${it.id}" }
     Column(Modifier.fillMaxSize()) {
         // Fixed height: a tab row can't report an intrinsic size, and the divider before ⊕ needs one to fill.
-        Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (lists.isEmpty()) Spacer(Modifier.weight(1f))
-            else ScrollableTabRow(selectedTabIndex = selected, modifier = Modifier.weight(1f), edgePadding = 12.dp, containerColor = MaterialTheme.colorScheme.surface, divider = {},
-                indicator = { pos -> TabRowDefaults.SecondaryIndicator(with(TabRowDefaults) { Modifier.tabIndicatorOffset(pos[selected]) }, height = 3.dp, color = Accent) }) {
-                lists.forEachIndexed { i, w ->
-                    Tab(selected == i, { tab = i }, selectedContentColor = Accent, unselectedContentColor = MaterialTheme.colorScheme.onSurface,
-                        text = { Text(w.name, fontSize = 17.sp, maxLines = 1, softWrap = false) }, modifier = Modifier.testTag("tab_wl_${w.id}"))
+        // The underline is as wide as the name, not the tab; names start 14 dp in, 22 dp apart.
+        Row(Modifier.fillMaxWidth().height(49.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f).fillMaxHeight().horizontalScroll(rememberScrollState()).padding(start = 3.dp)) {
+                tabs.forEachIndexed { i, (name, tag) ->
+                    Column(Modifier.fillMaxHeight().clickable { tab = i }.padding(horizontal = 11.dp).width(IntrinsicSize.Max).testTag(tag)) {
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            Text(name, fontSize = 14.sp, lineHeight = 20.sp, maxLines = 1, softWrap = false, color = if (selected == i) Accent else MaterialTheme.colorScheme.onSurface)
+                        }
+                        Box(Modifier.fillMaxWidth().height(3.dp).background(if (selected == i) Accent else Color.Transparent, RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)))
+                    }
                 }
             }
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            IconButton({ newList = true }, Modifier.padding(horizontal = 8.dp).testTag("tab_add_watchlist")) { Icon(Icons.Outlined.AddCircleOutline, "New watchlist", Modifier.size(30.dp)) }
+            Box(Modifier.width(49.dp).fillMaxHeight().clickable { newList = true }.testTag("tab_add_watchlist"), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.AddCircleOutline, "New watchlist", Modifier.size(25.dp))
+            }
         }
         HorizontalDivider()
-        lists.getOrNull(selected)?.let { WatchlistScreen(vm, nav, it, canDelete = lists.size > 1) }
+        if (selected == 0) OptionsTab(vm, nav) else lists.getOrNull(selected - 1)?.let { WatchlistScreen(vm, nav, it, canDelete = lists.size > 1) }
     }
     if (newList) NameDialog("New watchlist", "") { name -> newList = false; name?.let { openNewList = true; vm.createWatchlist(it) } }
 }
@@ -254,8 +255,8 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box {
-                Row(Modifier.clickable { menu = true }.padding(vertical = 12.dp).testTag("sort_filter"), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Sort & Filter", fontSize = 16.sp); Spacer(Modifier.width(6.dp)); Icon(Icons.Default.Tune, null, Modifier.size(18.dp))
+                Row(Modifier.clickable { menu = true }.height(28.dp).testTag("sort_filter"), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sort & Filter", fontSize = 12.sp, lineHeight = 16.sp); Spacer(Modifier.width(6.dp)); Icon(Icons.Default.Tune, null, Modifier.size(15.dp))
                 }
                 DropdownMenu(menu, { menu = false }) {
                     MenuHeader("Sort by")
@@ -279,7 +280,7 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
             shown.isEmpty() -> Text("No ${filter.label.lowercase()} in this watchlist", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
             else -> LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
                 items(shown, key = { it.symbol }) { item -> Box(Modifier.testTag("wl_item_${item.symbol}")) {
-                    WatchRow(rowLabel(item.symbol, vm.info(item.symbol)), quotes[item.symbol], freshnessOf(quotes[item.symbol], now, vm.maxAgeSec())) { action = item } }
+                    WatchRow(rowLabel(item.symbol, vm.info(item.symbol)), quotes[item.symbol]) { action = item } }
                 }
             }
         }
@@ -311,41 +312,44 @@ private val rowDate = java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy", 
 
 /** Watchlist row: name over contract details on the left; price in the day's colour over "+₹32.55 (+5.22%)" on the right. */
 @Composable
-private fun WatchRow(label: Pair<String, String>, q: MarketQuote?, f: Freshness, onClick: () -> Unit) {
-    val fresh = f == Freshness.LIVE || f == Freshness.DEMO; val dim = MaterialTheme.colorScheme.onSurfaceVariant
+private fun WatchRow(label: Pair<String, String>, q: MarketQuote?, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        // 62 dp a row: name centred 20 dp down, the contract line 45 dp down.
+        Row(Modifier.padding(top = 10.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(label.first, fontSize = 17.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Text(label.second, fontSize = 12.sp, color = dim, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                Text(label.first, fontSize = 16.sp, lineHeight = 20.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text(label.second, fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 7.5.dp))
             }
             Spacer(Modifier.width(12.dp))
             Column(horizontalAlignment = Alignment.End) {
-                Text(Fmt.rupee(q?.ltp), fontSize = 17.sp, color = if (fresh) Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface) else dim, maxLines = 1, softWrap = false)
-                Text(q?.change?.let { c -> "${if (c.signum() < 0) "-" else "+"}₹${Fmt.inr(c.abs())} (${Fmt.pct(q.changePct)})" } ?: "—", fontSize = 12.sp, color = dim,
-                    maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 6.dp))
+                Text(Fmt.rupee(q?.ltp), fontSize = 16.sp, lineHeight = 20.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface), maxLines = 1, softWrap = false)
+                Text(q?.change?.let { c -> "${if (c.signum() < 0) "-" else "+"}₹${Fmt.inr(c.abs())} (${Fmt.pct(q.changePct)})" } ?: "—", fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 7.5.dp))
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
-/** "Orders  Positions" as large text tabs in the ORDERS section, where the search bar sits elsewhere: selected dark, other grey. */
+/** "Orders  Positions" as text tabs in the ORDERS section (selected near-black, the other light slate), with search and ⋮ on the right. */
 @Composable
-private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit, onMenu: () -> Unit) {
+    Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 9.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         listOf("Orders", "Positions").forEachIndexed { i, t ->
-            Text(t, fontSize = 22.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected == i) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = 8.dp, vertical = 8.dp).testTag("tab_$t"))
+            Text(t, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (selected == i) Color(0xFF1A1D24) else Color(0xFF8A93A6),
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = 7.dp, vertical = 6.dp).testTag("tab_$t"))
         }
+        Spacer(Modifier.weight(1f))
+        IconButton(onSearch, Modifier.testTag("orders_search")) { Icon(Icons.Default.Search, "Search", Modifier.size(26.dp), tint = Color(0xFF1F2430)) }
+        IconButton(onMenu, Modifier.testTag("orders_menu")) { Icon(Icons.Default.MoreVert, "More", tint = Color(0xFF1F2430)) }
     }
 }
 
 /** Groww-style sheet shown on tapping a watchlist row: name card (tap to open full details), Set alert, Remove, Sell / Buy. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose: () -> Unit, onOpen: () -> Unit, onTrade: (Side) -> Unit, onRemove: () -> Unit) {
+private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose: () -> Unit, onOpen: () -> Unit, onTrade: (Side) -> Unit, onRemove: (() -> Unit)?) {
     var info by remember(symbol) { mutableStateOf(vm.info(symbol)) }
     LaunchedEffect(symbol) { if (info == null && symbol.endsWith("-EQ")) vm.equityInfo(symbol).onSuccess { info = it; vm.register(it) } }
     ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
@@ -366,11 +370,13 @@ private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose
                 Icon(Icons.Default.NotificationsNone, null); Spacer(Modifier.width(16.dp)); Text("Set alert", fontSize = 16.sp)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            // Rows have no star (as in Groww), so removal lives here.
-            Row(Modifier.fillMaxWidth().clickable(onClick = onRemove).padding(vertical = 16.dp, horizontal = 4.dp).testTag("quick_remove"), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.DeleteOutline, null); Spacer(Modifier.width(16.dp)); Text("Remove from watchlist", fontSize = 16.sp)
+            // Rows have no star (as in Groww), so removal lives here. Options-tab strikes aren't in a list, so they have none.
+            if (onRemove != null) {
+                Row(Modifier.fillMaxWidth().clickable(onClick = onRemove).padding(vertical = 16.dp, horizontal = 4.dp).testTag("quick_remove"), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.DeleteOutline, null); Spacer(Modifier.width(16.dp)); Text("Remove from watchlist", fontSize = 16.sp)
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             if (info == null) Text("Contract details unavailable, so this can't be traded right now.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
             Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Button({ onTrade(Side.SELL) }, Modifier.weight(1f).height(52.dp).testTag("btn_sell"), enabled = info != null, shape = RoundedCornerShape(8.dp),
@@ -395,17 +401,27 @@ private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit
 /** HOME, WATCHLIST, PORTFOLIO and ORDERS switch the main page; ACCOUNT opens settings. The selected item is blue, with no pill. */
 @Composable
 private fun BottomBar(section: Section, onSection: (Section) -> Unit, onAccount: () -> Unit) {
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-        val colors = NavigationBarItemDefaults.colors(selectedIconColor = Accent, selectedTextColor = Accent, indicatorColor = Color.Transparent,
-            unselectedIconColor = MaterialTheme.colorScheme.onSurface, unselectedTextColor = MaterialTheme.colorScheme.onSurface)
-        listOf(Triple(Section.HOME, Icons.Outlined.Home, Icons.Filled.Home), Triple(Section.WATCHLIST, Icons.Outlined.StarBorder, Icons.Filled.Stars),
-            Triple(Section.PORTFOLIO, Icons.Outlined.Folder, Icons.Filled.Folder), Triple(Section.ORDERS, Icons.Outlined.ContentPaste, Icons.Filled.ContentPaste))
-            .forEach { (s, icon, selectedIcon) ->
-                NavigationBarItem(selected = section == s, onClick = { onSection(s) }, icon = { Icon(if (section == s) selectedIcon else icon, null) },
-                    label = { Text(s.name, fontSize = 10.sp, maxLines = 1, softWrap = false) }, colors = colors, modifier = Modifier.testTag("bottom_${s.name}"))
-            }
-        NavigationBarItem(selected = false, onClick = onAccount, icon = { Icon(Icons.Outlined.AccountBalanceWallet, null) },
-            label = { Text("ACCOUNT", fontSize = 10.sp, maxLines = 1, softWrap = false) }, colors = colors, modifier = Modifier.testTag("bottom_ACCOUNT"))
+    Column(Modifier.background(MaterialTheme.colorScheme.surface).navigationBarsPadding()) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        // 68 dp: icon centred 19 dp down, label centred 49 dp down.
+        Row(Modifier.fillMaxWidth().height(68.dp)) {
+            // The selected item swaps to its solid blue icon.
+            listOf(Triple(Section.HOME, NavIcons.home, NavIcons.homeSelected), Triple(Section.WATCHLIST, NavIcons.star, NavIcons.starSelected),
+                Triple(Section.PORTFOLIO, NavIcons.folder, NavIcons.folderSelected), Triple(Section.ORDERS, NavIcons.clipboard, NavIcons.clipboardSelected))
+                .forEach { (s, icon, solid) -> val sel = section == s
+                    BottomItem(s.name, if (sel) solid else icon, sel, "bottom_${s.name}") { onSection(s) }
+                }
+            BottomItem("ACCOUNT", NavIcons.wallet, false, "bottom_ACCOUNT", onAccount)
+        }
+    }
+}
+
+@Composable
+private fun RowScope.BottomItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, tag: String, onClick: () -> Unit) {
+    val c = if (selected) Accent else MaterialTheme.colorScheme.onSurface
+    Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick).padding(top = 6.dp).testTag(tag), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, null, Modifier.size(26.dp), tint = if (selected) Color.Unspecified else c); Spacer(Modifier.height(11.dp))
+        Text(label, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.Medium, color = c, maxLines = 1, softWrap = false)
     }
 }
 
@@ -494,5 +510,148 @@ fun StockRow(symbol: String, name: String, q: MarketQuote?, f: Freshness, starre
             IconButton(onToggle) { Icon(if (starred) Icons.Default.Star else Icons.Default.StarBorder, if (starred) "Remove from watchlist" else "Add to watchlist", tint = if (starred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+
+/**
+ * The fixed first WATCHLIST tab: Call/Put, the index chips (the selected one carries its expiry picker), then that
+ * expiry's strikes around the money, each tagged ITM/ATM/OTM. Tap a strike for Buy/Sell.
+ */
+@Composable
+private fun OptionsTab(vm: AppVM, nav: Nav) {
+    var calls by rememberSaveable { mutableStateOf(true) }; var u by rememberSaveable { mutableStateOf(Underlying.NIFTY) }
+    var expiry by remember(u) { mutableStateOf<java.time.LocalDate?>(null) } // null: the nearest one
+    var chain by remember(u) { mutableStateOf<com.papertrade.app.data.market.OptionChain?>(null) }; var error by remember(u) { mutableStateOf<String?>(null) }
+    var action by remember { mutableStateOf<String?>(null) }
+    val quotes by vm.quotes.collectAsState(); val provider by vm.provider.collectAsState()
+    LaunchedEffect(u, expiry, provider) {
+        // One chain read gives the strikes; their prices then tick through the quote feed. Re-read each minute so the
+        // money line follows the index (1 request a minute, well inside the FYERS limits), and stop once a live market shuts.
+        while (true) {
+            vm.optionChain(u, expiry).fold({ chain = it; error = null }, { error = it.message })
+            if (chain?.source != com.papertrade.core.QuoteSource.DEMO && !com.papertrade.core.MarketHours.isLikelyOpen(java.time.Instant.now())) break
+            kotlinx.coroutines.delay(60_000)
+        }
+    }
+    val ch = chain
+    val sides = ch?.rows.orEmpty().mapNotNull { r -> (if (calls) r.call else r.put)?.let { r.strike to it } }
+    val symbols = sides.map { it.second.symbol }
+    DisposableEffect(symbols) { vm.subscribe("options", symbols.toSet()); onDispose { vm.unsubscribe("options") } }
+    val spot = quotes[u.indexSymbol]?.ltp ?: ch?.underlyingLtp
+    val atm = spot?.let { s -> sides.minByOrNull { (it.first - s).abs() }?.first }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // Open with the money line in view, a few strikes from the top.
+    LaunchedEffect(u, ch?.selectedExpiry, calls, atm != null) { sides.indexOfFirst { it.first == atm }.takeIf { it >= 0 }?.let { listState.scrollToItem((it - 4).coerceAtLeast(0)) } }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().height(46.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                CallPut(calls) { calls = it }
+                VerticalDivider(Modifier.padding(horizontal = 10.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                Underlying.values().forEach { x ->
+                    if (x == u) ExpiryChip(x.name, ch?.selectedExpiry, ch?.expiries.orEmpty()) { expiry = it }
+                    else Box(Modifier.height(32.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape).clickable { u = x }.padding(horizontal = 18.dp).testTag("opt_u_${x.name}"),
+                        contentAlignment = Alignment.Center) { Text(x.name, fontSize = 14.sp, lineHeight = 18.sp) }
+                    Spacer(Modifier.width(8.dp))
+                }
+            }
+            when {
+                ch == null && error != null -> Text("Option chain unavailable: $error", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+                ch == null -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                else -> LazyColumn(Modifier.testTag("options_list"), state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 60.dp)) {
+                    items(sides, key = { it.second.symbol }) { (strike, s) ->
+                        val money = when { atm == null -> null; strike == atm -> "ATM"; (strike < atm) == calls -> "ITM"; else -> "OTM" }
+                        StrikeRow(u, strike, if (calls) "CE" else "PE", ch.selectedExpiry, money, quotes[s.symbol] ?: s.quote) { action = s.symbol }
+                    }
+                }
+            }
+        }
+        Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 15.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton(Icons.Default.CandlestickChart, "Charts", Modifier.weight(1f).testTag("opt_charts")) { nav.index(u) }
+            PillButton(Icons.Default.Link, "Option Chain", Modifier.weight(1f).testTag("opt_chain")) { nav.chain(u) }
+        }
+    }
+    action?.let { sym -> QuickActionSheet(vm, sym, quotes[sym], { action = null }, onOpen = { action = null; nav.contract(sym) },
+        onTrade = { side -> action = null; nav.order(sym, side) }, onRemove = null) }
+}
+
+/** "Call | Put" in one outlined pill; the selected half is filled blue. */
+@Composable
+private fun CallPut(calls: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.height(32.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape).padding(2.dp)) {
+        listOf(true to "Call", false to "Put").forEach { (v, t) ->
+            Box(Modifier.fillMaxHeight().clip(CircleShape).background(if (calls == v) Accent else Color.Transparent).clickable { onChange(v) }.padding(horizontal = 12.dp).testTag("opt_$t"),
+                contentAlignment = Alignment.Center) { Text(t, fontSize = 14.sp, lineHeight = 18.sp, color = if (calls == v) Color.White else MaterialTheme.colorScheme.onSurface) }
+        }
+    }
+}
+
+/** The selected index: its name in a blue pill, then "03 Nov ⌄", which opens the list of expiries. */
+@Composable
+private fun ExpiryChip(name: String, selected: java.time.LocalDate?, expiries: List<java.time.LocalDate>, onPick: (java.time.LocalDate) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Row(Modifier.height(32.dp).clip(CircleShape).border(1.dp, Accent.copy(alpha = 0.35f), CircleShape), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.fillMaxHeight().border(1.dp, Accent, CircleShape).padding(horizontal = 18.dp), contentAlignment = Alignment.Center) {
+            Text(name, fontSize = 14.sp, lineHeight = 18.sp, color = Accent)
+        }
+        Box {
+            Row(Modifier.fillMaxHeight().clickable(enabled = expiries.isNotEmpty()) { open = true }.padding(start = 14.dp, end = 10.dp).testTag("opt_expiry"), verticalAlignment = Alignment.CenterVertically) {
+                Text(selected?.format(chipDate) ?: "—", fontSize = 14.sp, lineHeight = 18.sp); Spacer(Modifier.width(6.dp))
+                Icon(Icons.Default.KeyboardArrowDown, "Change expiry", Modifier.size(18.dp), tint = Accent)
+            }
+            DropdownMenu(open, { open = false }) {
+                expiries.forEach { e -> DropdownMenuItem({ Text(e.format(chipDate), fontWeight = if (e == selected) FontWeight.SemiBold else FontWeight.Normal) }, { open = false; onPick(e) },
+                    trailingIcon = { if (e == selected) Icon(Icons.Default.Check, null, tint = Accent) }) }
+            }
+        }
+    }
+}
+private val chipDate = java.time.format.DateTimeFormatter.ofPattern("dd MMM", java.util.Locale.ENGLISH)
+private val strikeDate = java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy", java.util.Locale.ENGLISH)
+
+/** One strike, laid out like a watchlist row: "NIFTY [ITM]" over "03 Nov 2026 **22850** CE"; price with ▲/▼ over "₹19.25 (+9.12%)". */
+@Composable
+private fun StrikeRow(u: Underlying, strike: java.math.BigDecimal, type: String, expiry: java.time.LocalDate, money: String?, q: MarketQuote?, onClick: () -> Unit) {
+    val c = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface)
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("opt_row_$strike")) {
+        Row(Modifier.padding(top = 10.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Row(Modifier.height(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(u.name, fontSize = 16.sp, lineHeight = 20.sp); money?.let { Spacer(Modifier.width(6.dp)); MoneyTag(it) }
+                }
+                Text(androidx.compose.ui.text.buildAnnotatedString {
+                    append(expiry.format(strikeDate) + " ")
+                    pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.SemiBold)); append(strike.stripTrailingZeros().toPlainString()); pop()
+                    append(" $type")
+                }, fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 7.5.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Row(Modifier.height(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(Fmt.rupee(q?.ltp), fontSize = 16.sp, lineHeight = 20.sp, color = c, maxLines = 1, softWrap = false)
+                    q?.change?.takeIf { it.signum() != 0 }?.let { Text(if (it.signum() > 0) "▲" else "▼", fontSize = 10.sp, lineHeight = 12.sp, color = c, modifier = Modifier.padding(start = 3.dp)) }
+                }
+                Text(q?.change?.let { d -> "${if (d.signum() < 0) "-" else ""}₹${Fmt.inr(d.abs())} (${Fmt.pct(q.changePct)})" } ?: "—", fontSize = 12.sp, lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface, maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 7.5.dp))
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+/** ITM green, ATM amber, OTM grey. */
+@Composable
+private fun MoneyTag(t: String) {
+    val (bg, fg) = when (t) { "ITM" -> Gain.copy(alpha = 0.12f) to Color(0xFF0B7A5C); "ATM" -> Color(0xFFFFEBD2) to Color(0xFF9A5B00); else -> Color(0xFFEDEEF3) to Color(0xFF55586A) }
+    Box(Modifier.height(16.dp).background(bg, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+        Text(t, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.Medium, color = fg)
+    }
+}
+
+/** Light blue pill button with a blue icon and label, as under the Options list. */
+@Composable
+private fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+    Row(modifier.height(38.dp).clip(CircleShape).background(Color(0xFFEEF0FA)).clickable(onClick = onClick), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(18.dp), tint = Accent); Spacer(Modifier.width(8.dp)); Text(label, fontSize = 15.sp, lineHeight = 20.sp, color = Accent)
     }
 }

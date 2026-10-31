@@ -12,8 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.CandlestickChart
@@ -35,13 +35,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.outlined.Shield
 import com.papertrade.app.ui.theme.Accent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
@@ -171,28 +168,28 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
     val shownClosed = (if (filter == PosFilter.OPEN) emptyList() else closed).filter(::matches)
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(60.dp).padding(start = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box {
-                IconButton({ filterMenu = true }, Modifier.testTag("pos_filter")) { Icon(Icons.Default.Tune, "Filter positions", tint = Accent) }
+                IconButton({ filterMenu = true }, Modifier.testTag("pos_filter")) { Icon(NavIcons.sliders, "Filter positions", Modifier.size(20.dp), tint = ExitBlue) }
                 DropdownMenu(filterMenu, { filterMenu = false }) {
                     PosFilter.values().forEach { f -> DropdownMenuItem({ Text(f.label, fontWeight = if (f == filter) FontWeight.SemiBold else FontWeight.Normal) }, { filter = f; filterMenu = false }) }
                 }
             }
-            IconButton({ searching = !searching; if (!searching) query = "" }, Modifier.testTag("pos_search")) { Icon(Icons.Default.Search, "Search positions", tint = Accent) }
+            IconButton({ searching = !searching; if (!searching) query = "" }, Modifier.testTag("pos_search")) { Icon(NavIcons.search, "Search positions", Modifier.size(24.dp), tint = ExitBlue) }
             if (filter != PosFilter.ALL) Text(filter.label, fontSize = 12.sp, color = dim, maxLines = 1)
             Spacer(Modifier.weight(1f))
             // Secure Exit (auto-exit at a total profit/loss limit) isn't built yet.
             TextButton({ vm.messages.tryEmit("Secure Exit is coming soon") }, contentPadding = PaddingValues(horizontal = 6.dp)) {
-                Icon(Icons.Outlined.Shield, null, Modifier.size(18.dp), tint = Accent); Spacer(Modifier.width(4.dp)); Text("SECURE EXIT", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                Icon(NavIcons.secureExit, null, Modifier.size(21.dp), tint = ExitBlue); Spacer(Modifier.width(7.dp)); Text("SECURE EXIT", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ExitBlue)
             }
+            Spacer(Modifier.width(6.dp))
             TextButton({ confirmExitAll = true }, Modifier.testTag("exit_all"), enabled = open.isNotEmpty(), contentPadding = PaddingValues(horizontal = 6.dp)) {
-                Icon(Icons.AutoMirrored.Filled.Logout, null, Modifier.size(18.dp), tint = if (open.isNotEmpty()) Accent else dim); Spacer(Modifier.width(4.dp))
-                Text("EXIT ALL", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (open.isNotEmpty()) Accent else dim)
+                Icon(NavIcons.exitAll, null, Modifier.size(21.dp), tint = if (open.isNotEmpty()) ExitBlue else dim); Spacer(Modifier.width(7.dp))
+                Text("EXIT ALL", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (open.isNotEmpty()) ExitBlue else dim)
             }
         }
         if (searching) OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("Search positions") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).testTag("pos_query"))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         LazyColumn(Modifier.weight(1f)) {
             items(shownOpen, key = { it.instrumentId }) { p ->
                 PositionCard(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId], null, onExit = { vm.closePosition(p) }) { sel = p }
@@ -205,13 +202,14 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
         // Total of today's book (all visible rows, whatever the filter), pinned above the bottom bar.
         val total = pnl.values.fold(BigDecimal.ZERO, BigDecimal::add)
         val unrealised = open.mapNotNull { p -> val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.unrealized }.fold(BigDecimal.ZERO, BigDecimal::add)
-        Column(Modifier.fillMaxWidth().background(Fmt.color(total, dim).copy(alpha = 0.12f)).clickable { breakdown = !breakdown }.padding(horizontal = 16.dp, vertical = 12.dp).testTag("positions_total_bar")) {
-            if (breakdown) { StatRow("Realised today", Fmt.signed(total - unrealised)); StatRow("Unrealised", Fmt.signed(unrealised)); Spacer(Modifier.height(6.dp)) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.CheckCircle, null, Modifier.size(20.dp), tint = Gain); Spacer(Modifier.width(8.dp))
-                Text("Total", fontSize = 16.sp, modifier = Modifier.weight(1f))
-                Text(signedRupee(total), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.testTag("positions_total"))
-                Icon(if (breakdown) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, if (breakdown) "Hide breakdown" else "Show breakdown")
+        Column(Modifier.fillMaxWidth().background(Fmt.color(total, dim).copy(alpha = 0.14f)).clickable { breakdown = !breakdown }.padding(horizontal = 16.dp).testTag("positions_total_bar")) {
+            if (breakdown) { Spacer(Modifier.height(8.dp)); StatRow("Realised today", Fmt.signed(total - unrealised)); StatRow("Unrealised", Fmt.signed(unrealised)) }
+            Row(Modifier.height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.CheckCircle, null, Modifier.size(18.dp), tint = Gain); Spacer(Modifier.width(8.dp))
+                Text("Total", fontSize = 15.sp, lineHeight = 20.sp, modifier = Modifier.weight(1f))
+                Text(signedRupee(total), fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.testTag("positions_total"))
+                Spacer(Modifier.width(6.dp))
+                Icon(if (breakdown) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, if (breakdown) "Hide breakdown" else "Show breakdown", Modifier.size(20.dp))
             }
         }
     }
@@ -238,13 +236,13 @@ private val posDate = java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy", 
 private fun posTitle(id: String, info: com.papertrade.app.data.market.InstrumentInfo?) = buildAnnotatedString {
     val e = info?.expiry
     if (e == null) { append(id.substringAfter(':').removeSuffix("-EQ")); return@buildAnnotatedString }
-    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(info.underlying ?: id.substringAfter(':')) }
+    withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(info.underlying ?: id.substringAfter(':')) }
     append(" ${e.format(posDate)} " + (info.optionType?.let { "${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${it.name}" } ?: "FUT"))
 }
 
 @Composable
-private fun Chip(text: String, color: androidx.compose.ui.graphics.Color) = Text(text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color,
-    modifier = Modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+private fun Chip(text: String, color: androidx.compose.ui.graphics.Color) = Box(Modifier.height(19.dp).background(color.copy(alpha = 0.14f), RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
+    contentAlignment = Alignment.Center) { Text(text, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium, color = color) }
 
 /**
  * Open:   NIFTY 29-Sep-26 22450 PE ......... +₹191.10      Closed (greyed):  NIFTY 06-Oct-26 22300 PE ... +₹572.00
@@ -255,39 +253,47 @@ private fun Chip(text: String, color: androidx.compose.ui.graphics.Color) = Text
 @Composable
 private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertrade.app.data.market.MarketQuote?, booked: Triple<Int, BigDecimal?, BigDecimal?>?,
                          onExit: () -> Unit, onClick: () -> Unit) {
-    val info = vm.info(p.instrumentId); val dim = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (p.isOpen) 1f else 0.5f).padding(horizontal = 16.dp, vertical = 14.dp)
-        .testTag("pos_${p.instrumentId}"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(posTitle(p.instrumentId, info), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+    val info = vm.info(p.instrumentId); val dim = MaterialTheme.colorScheme.onSurfaceVariant; val ink = MaterialTheme.colorScheme.onSurface
+    // 100 dp a card: three 20 dp lines, 4 and 8 dp apart.
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (p.isOpen) 1f else 0.5f).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp)
+        .testTag("pos_${p.instrumentId}")) {
+        Row(Modifier.height(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(posTitle(p.instrumentId, info), fontSize = 15.sp, lineHeight = 20.sp, color = Color(0xFF1F2430), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(8.dp))
-            Text(signedRupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
+            Text(signedRupee(pnl), fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = Fmt.color(pnl, ink))
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(top = 4.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
             val n = booked?.first ?: kotlin.math.abs(p.quantity)
-            Text("$n ${if (n == 1) "Lot" else "Lots"} • " + if (booked == null) "Avg. ${Fmt.rupee(p.avgPrice)}" else "CF", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
-            Text("LTP ${Fmt.rupee(q?.ltp)} ", fontSize = 13.sp, color = dim)
-            Text("(${Fmt.pct(q?.changePct)})", fontSize = 13.sp, color = Fmt.color(q?.changePct, dim))
+            Text("$n ${if (n == 1) "Lot" else "Lots"}", fontSize = 14.sp, lineHeight = 18.sp, color = ink)
+            Text("  •  ", fontSize = 13.sp, lineHeight = 18.sp, color = ink)
+            if (booked == null) Text("Avg. ${Fmt.rupee(p.avgPrice)}", fontSize = 14.sp, lineHeight = 18.sp, color = ink) else Chip("CF", dim)
+            Spacer(Modifier.weight(1f))
+            Text("LTP ${Fmt.rupee(q?.ltp)}  ", fontSize = 14.sp, lineHeight = 18.sp, color = ink)
+            Text("(${Fmt.pct(q?.changePct)})", fontSize = 14.sp, lineHeight = 18.sp, color = Fmt.color(pnl, ink)) // same colour as the P&L above
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(top = 8.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
             if (booked == null) {
                 Chip(if (p.quantity > 0) "BUY" else "SELL", if (p.quantity > 0) Gain else Loss); Spacer(Modifier.width(6.dp)); Chip("CF", dim)
-                Text("  (1 Lot = ${info?.lotSize ?: "—"})", fontSize = 12.sp, color = dim, maxLines = 1, modifier = Modifier.weight(1f))
+                Text("  (1 Lot = ${info?.lotSize ?: "—"})", fontSize = 12.sp, lineHeight = 16.sp, color = ink, maxLines = 1, modifier = Modifier.weight(1f))
                 // Closes the whole position at market straight away (paper money, so no confirmation step).
-                Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onExit).padding(horizontal = 4.dp, vertical = 2.dp).testTag("one_tap_exit_${p.instrumentId}"),
+                Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onExit).padding(horizontal = 2.dp, vertical = 2.dp).testTag("one_tap_exit_${p.instrumentId}"),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Bolt, null, Modifier.size(16.dp), tint = Warn); Text("ONE TAP EXIT", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+                    Text("⚡", fontSize = 14.sp, lineHeight = 16.sp); Spacer(Modifier.width(4.dp)) // the yellow emoji bolt, as in the reference
+                    Text("ONE TAP EXIT", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = ExitBlue)
                 }
             } else {
-                Text("Buy ${Fmt.rupee(booked.second)}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
-                Text("Sell ${Fmt.rupee(booked.third)}", fontSize = 13.sp, color = dim)
+                Text("Buy ${Fmt.rupee(booked.second)}", fontSize = 14.sp, lineHeight = 18.sp, color = ink, modifier = Modifier.weight(1f))
+                Text("Sell ${Fmt.rupee(booked.third)}", fontSize = 14.sp, lineHeight = 18.sp, color = ink)
             }
         }
     }
-    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 /** Quantity blue in the position sheet. */
+/** The dark aqua of the Positions toolbar and ONE TAP EXIT. */
+private val ExitBlue = androidx.compose.ui.graphics.Color(0xFF0E6E8C)
+
 private val ChipBlue = androidx.compose.ui.graphics.Color(0xFF5367FF)
 
 /**

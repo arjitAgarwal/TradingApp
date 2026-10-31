@@ -128,6 +128,10 @@ class AppVM(private val c: AppContainer) : ViewModel() {
             } }
         }
     }
+    /** One chain read for the WATCHLIST "Options" tab; its contracts become tradable and their quotes seed the hub. */
+    suspend fun optionChain(u: Underlying, expiry: LocalDate?, strikesEachSide: Int = 10) = provider.value.optionChain(u, expiry, strikesEachSide).onSuccess { ch ->
+        ch.rows.forEach { r -> listOfNotNull(r.call, r.put).forEach { s -> s.info?.let { c.contracts[s.symbol] = it }; c.hub.seed(s.quote) } }
+    }
     suspend fun search(q: String) = provider.value.searchEquities(q)
     suspend fun equityInfo(symbol: String) = provider.value.equityInfo(symbol).onSuccess { c.contracts[symbol] = it }
 }
