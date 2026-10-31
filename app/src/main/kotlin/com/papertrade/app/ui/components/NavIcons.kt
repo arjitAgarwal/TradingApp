@@ -121,4 +121,32 @@ object NavIcons {
         line(1.6f) { roundRect(8f, 7.5f, 20f, 19.5f, 2.2f) }
         line(1.6f) { moveTo(11.5f, 16f); lineTo(16.2f, 11.3f); moveTo(12.6f, 11.3f); lineTo(16.2f, 11.3f); lineTo(16.2f, 14.9f) }
     }
+
+    // Quote sheet and Options-tab pills.
+
+    private val Amber = Color(0xFFF4B400); private val CandleGreen = Color(0xFF00916E); private val CandleRed = Color(0xFFD64F4F)
+
+    private fun PathBuilder.bigStar() {
+        moveTo(12f, 3f); lineTo(14.47f, 9.1f); lineTo(21.04f, 9.56f); lineTo(15.99f, 13.8f); lineTo(17.58f, 20.19f)
+        lineTo(12f, 16.7f); lineTo(6.42f, 20.19f); lineTo(8.01f, 13.8f); lineTo(2.96f, 9.56f); lineTo(9.53f, 9.1f); close()
+    }
+
+    /** A thin amber star with a pale fill; [watchStarOn] is solid. Both carry their own colours (tint = Color.Unspecified). */
+    val watchStar = icon("WatchStar") { path(fill = SolidColor(Color(0xFFFFF4D6)), stroke = SolidColor(Amber), strokeLineWidth = 1.5f, strokeLineJoin = StrokeJoin.Round) { bigStar() } }
+    val watchStarOn = icon("WatchStarOn") { path(fill = SolidColor(Amber), stroke = SolidColor(Amber), strokeLineWidth = 1.5f, strokeLineJoin = StrokeJoin.Round) { bigStar() } }
+
+    /** Two chain links on the diagonal, thin line, tinted by Icon. */
+    val chainLink = icon("ChainLink") {
+        line(1.8f) { moveTo(10f, 13f); arcToRelative(5f, 5f, 0f, false, false, 7.54f, 0.54f); lineToRelative(3f, -3f); arcToRelative(5f, 5f, 0f, false, false, -7.07f, -7.07f); lineToRelative(-1.72f, 1.71f) }
+        line(1.8f) { moveTo(14f, 11f); arcToRelative(5f, 5f, 0f, false, false, -7.54f, -0.54f); lineToRelative(-3f, 3f); arcToRelative(5f, 5f, 0f, false, false, 7.07f, 7.07f); lineToRelative(1.71f, -1.71f) }
+    }
+
+    /** Three candles, green / red / green, each a wick through a solid body. Carries its own colours. */
+    val candles = icon("Candles") {
+        listOf(Triple(4.5f, CandleGreen, floatArrayOf(4f, 8f, 16f, 21f)), Triple(12f, CandleRed, floatArrayOf(3f, 6f, 13f, 17f)),
+            Triple(19.5f, CandleGreen, floatArrayOf(5f, 9f, 15f, 20f))).forEach { (x, c, y) ->
+            line(2f, c) { moveTo(x, y[0]); lineTo(x, y[3]) }
+            path(fill = SolidColor(c)) { roundRect(x - 2.4f, y[1], x + 2.4f, y[2], 0.6f) }
+        }
+    }
 }

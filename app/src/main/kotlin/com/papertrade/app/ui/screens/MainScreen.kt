@@ -468,10 +468,10 @@ private fun QuickActionSheet(vm: AppVM, nav: Nav, symbol: String, q: MarketQuote
                 Spacer(Modifier.height(20.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.height(36.dp).width(48.dp).clip(CircleShape).background(SheetPill).clickable(onClick = onStar).testTag("quick_star"), contentAlignment = Alignment.Center) {
-                        Icon(if (inList) Icons.Default.Star else Icons.Default.StarBorder, if (inList) "Remove from watchlist" else "Add to watchlist", Modifier.size(22.dp), tint = Color(0xFFF5A623))
+                        Icon(if (inList) NavIcons.watchStarOn else NavIcons.watchStar, if (inList) "Remove from watchlist" else "Add to watchlist", Modifier.size(22.dp), tint = Color.Unspecified)
                     }
-                    SheetPillButton(Icons.Default.Link, "Option Chain", "quick_chain", enabled = idx != null || stock != null) { onClose(); if (idx != null) nav.chain(idx) else stock?.let(nav.stockChain) }
-                    SheetPillButton(Icons.Default.CandlestickChart, "Charts", "quick_charts", enabled = idx != null || stock != null) { onClose(); if (idx != null) nav.index(idx) else stock?.let(nav.stock) }
+                    SheetPillButton(NavIcons.chainLink, "Option Chain", "quick_chain", enabled = idx != null || stock != null) { onClose(); if (idx != null) nav.chain(idx) else stock?.let(nav.stockChain) }
+                    SheetPillButton(NavIcons.candles, "Charts", "quick_charts", enabled = idx != null || stock != null, ownColors = true) { onClose(); if (idx != null) nav.index(idx) else stock?.let(nav.stock) }
                 }
                 if (info == null) Text("Contract details unavailable, so this can't be traded right now.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp))
                 Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -488,9 +488,9 @@ private fun QuickActionSheet(vm: AppVM, nav: Nav, symbol: String, q: MarketQuote
 private val SheetPill = Color(0xFFEEF0FA); private val SheetBuy = Color(0xFF00916E); private val SheetSell = Color(0xFFD64F4F)
 
 @Composable
-private fun SheetPillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tag: String, enabled: Boolean, onClick: () -> Unit) {
+private fun SheetPillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tag: String, enabled: Boolean, ownColors: Boolean = false, onClick: () -> Unit) {
     Row(Modifier.height(36.dp).clip(CircleShape).background(SheetPill).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(18.dp), tint = Accent); Spacer(Modifier.width(8.dp)); Text(label, fontSize = 15.sp, color = if (enabled) Accent else MaterialTheme.colorScheme.outline)
+        Icon(icon, null, Modifier.size(18.dp), tint = if (ownColors) Color.Unspecified else Accent); Spacer(Modifier.width(8.dp)); Text(label, fontSize = 15.sp, color = if (enabled) Accent else MaterialTheme.colorScheme.outline)
     }
 }
 
@@ -691,8 +691,8 @@ private fun OptionsTab(vm: AppVM, nav: Nav) {
             }
         }
         Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 15.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton(Icons.Default.CandlestickChart, "Charts", Modifier.weight(1f).testTag("opt_charts")) { nav.index(u) }
-            PillButton(Icons.Default.Link, "Option Chain", Modifier.weight(1f).testTag("opt_chain")) { nav.chain(u) }
+            PillButton(NavIcons.candles, "Charts", Modifier.weight(1f).testTag("opt_charts"), ownColors = true) { nav.index(u) }
+            PillButton(NavIcons.chainLink, "Option Chain", Modifier.weight(1f).testTag("opt_chain")) { nav.chain(u) }
         }
     }
     action?.let { sym -> val holder = lists.firstOrNull { w -> w.items.any { it.symbol == sym } }
@@ -777,8 +777,8 @@ private fun MoneyTag(t: String) {
 
 /** Light blue pill button with a blue icon and label, as under the Options list. */
 @Composable
-private fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+private fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, ownColors: Boolean = false, onClick: () -> Unit) {
     Row(modifier.height(38.dp).clip(CircleShape).background(Color(0xFFEEF0FA)).clickable(onClick = onClick), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(18.dp), tint = Accent); Spacer(Modifier.width(8.dp)); Text(label, fontSize = 15.sp, lineHeight = 20.sp, color = Accent)
+        Icon(icon, null, Modifier.size(18.dp), tint = if (ownColors) Color.Unspecified else Accent); Spacer(Modifier.width(8.dp)); Text(label, fontSize = 15.sp, lineHeight = 20.sp, color = Accent)
     }
 }
