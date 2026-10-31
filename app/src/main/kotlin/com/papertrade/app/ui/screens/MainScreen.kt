@@ -499,7 +499,7 @@ private fun SheetPillButton(icon: androidx.compose.ui.graphics.vector.ImageVecto
  * (buy prices green, sell red) and the total quantities. Falls back to the quote's OHLC when depth isn't available.
  */
 @Composable
-private fun DepthCard(d: com.papertrade.app.data.market.MarketDepth?, q: MarketQuote?, error: String?) {
+internal fun DepthCard(d: com.papertrade.app.data.market.MarketDepth?, q: MarketQuote?, error: String?) {
     val line = MaterialTheme.colorScheme.outlineVariant
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(1.dp, line, RoundedCornerShape(12.dp)).testTag("depth_card")) {
         Row(Modifier.fillMaxWidth().background(Color(0xFFF2F4F8)).padding(vertical = 10.dp)) {
