@@ -249,20 +249,32 @@ class FyersProvider(
     }
 
     override suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
+        chainFor(underlying.indexSymbol, underlying.displayName, underlying, underlying.masterSegment(), expiry, strikesEachSide)
+    }
+
+    override suspend fun stockOptionChain(symbol: String, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
+        val root = symbol.substringAfter(':').removeSuffix("-EQ")
+        // Most stocks aren't in F&O: answer that from the symbol master instead of spending a request.
+        if (master("NSE_FO").none { it.underlying == root && it.opt != null }) throw ProviderException("No options are traded on $root", ProviderException.Kind.UNSUPPORTED)
+        chainFor(symbol, root, null, "NSE_FO", expiry, strikesEachSide)
+    }
+
+    /** The chain of [symbol] (an index or a stock); contract metadata comes from the [segment] symbol master. */
+    private suspend fun chainFor(symbol: String, label: String, underlying: Underlying?, segment: String, expiry: LocalDate?, strikesEachSide: Int): OptionChain {
         // Note: the chain's `timestamp` param selects an expiry by epoch; the nearest expiry is returned when omitted.
-        var url = "$dataBase/options-chain-v3?symbol=${enc(underlying.indexSymbol)}&strikecount=${strikesEachSide.coerceIn(1, 50)}"
+        var url = "$dataBase/options-chain-v3?symbol=${enc(symbol)}&strikecount=${strikesEachSide.coerceIn(1, 50)}"
         if (expiry != null) {
             // Epochs are remembered from earlier responses, so a refresh costs one request instead of two.
-            val epoch = expiryEpochs[underlying]?.get(expiry) ?: run { val first = getJson(url); rememberEpochs(underlying, first["data"] as? JsonObject); expiryEpochs[underlying]?.get(expiry) }
+            val epoch = expiryEpochs[symbol]?.get(expiry) ?: run { val first = getJson(url); rememberEpochs(symbol, first["data"] as? JsonObject); expiryEpochs[symbol]?.get(expiry) }
             if (epoch != null) url += "&timestamp=$epoch"
         }
-        val data = getJson(url)["data"] as? JsonObject ?: throw ProviderException("Option chain not available for ${underlying.displayName}", ProviderException.Kind.UNSUPPORTED)
-        rememberEpochs(underlying, data)
+        val data = getJson(url)["data"] as? JsonObject ?: throw ProviderException("Option chain not available for $label", ProviderException.Kind.UNSUPPORTED)
+        rememberEpochs(symbol, data)
         val expiries = (data["expiryData"] as? JsonArray).orEmpty().mapNotNull { runCatching { LocalDate.parse(it.jsonObject["date"].str(), dateFmt) }.getOrNull() }
         val chain = (data["optionsChain"] as? JsonArray).orEmpty().map { it.jsonObject }
         val now = clock(); val src = sourceNow(now)
         val under = chain.firstOrNull { it["strike_price"].dec()?.signum() == -1 || it["strike_price"].str() == "-1" }?.get("ltp").dec()
-        val master = master(underlying.masterSegment()).associateBy { it.ticker }
+        val master = master(segment).associateBy { it.ticker }
         val rows = sortedMapOf<BigDecimal, Pair<OptionSide?, OptionSide?>>()
         for (e in chain) {
             val strike = e["strike_price"].dec()?.takeIf { it.signum() > 0 } ?: continue
@@ -277,11 +289,12 @@ class FyersProvider(
             rows[strike] = if (type == OptionType.CE) side to cur.second else cur.first to side
         }
         val selected = expiry ?: expiries.firstOrNull() ?: throw ProviderException("Provider returned no expiries", ProviderException.Kind.UNSUPPORTED)
-        OptionChain(underlying, under, expiries, selected, rows.map { OptionRow(it.key, it.value.first, it.value.second) }, now, src)
+        return OptionChain(underlying, under, expiries, selected, rows.map { OptionRow(it.key, it.value.first, it.value.second) }, now, src)
     }
 
-    private val expiryEpochs = java.util.concurrent.ConcurrentHashMap<Underlying, Map<LocalDate, String>>()
-    private fun rememberEpochs(u: Underlying, data: JsonObject?) {
+    /** Expiry date to FYERS epoch, per chain symbol. */
+    private val expiryEpochs = java.util.concurrent.ConcurrentHashMap<String, Map<LocalDate, String>>()
+    private fun rememberEpochs(u: String, data: JsonObject?) {
         val m = (data?.get("expiryData") as? JsonArray).orEmpty().mapNotNull { e ->
             val o = e.jsonObject; val d = runCatching { LocalDate.parse(o["date"].str(), dateFmt) }.getOrNull() ?: return@mapNotNull null
             o["expiry"].str()?.let { d to it }

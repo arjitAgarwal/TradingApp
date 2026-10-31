@@ -56,7 +56,8 @@ data class InstrumentInfo(
 data class OptionSide(val info: InstrumentInfo?, val symbol: String, val quote: MarketQuote)
 data class OptionRow(val strike: BigDecimal, val call: OptionSide?, val put: OptionSide?)
 data class OptionChain(
-    val underlying: Underlying,
+    /** The index, or null for a stock's chain. */
+    val underlying: Underlying?,
     val underlyingLtp: BigDecimal?,
     val expiries: List<LocalDate>,
     val selectedExpiry: LocalDate,
@@ -91,6 +92,12 @@ interface MarketDataProvider {
     suspend fun futures(underlying: Underlying): Result<List<FutureContract>>
     /** [expiry] null = nearest expiry the provider lists. */
     suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int = 12): Result<OptionChain>
+    /**
+     * Option chain of an F&O stock, by its cash-market symbol ("NSE:RELIANCE-EQ"); [expiry] null = nearest. Fails with
+     * [ProviderException.Kind.UNSUPPORTED] for a stock that has no options, or a provider that can't list them.
+     */
+    suspend fun stockOptionChain(symbol: String, expiry: LocalDate?, strikesEachSide: Int = 12): Result<OptionChain> =
+        Result.failure(ProviderException("$displayName can't show stock option chains yet", ProviderException.Kind.UNSUPPORTED))
     suspend fun candles(symbol: String, interval: CandleInterval): Result<List<Candle>>
     /**
      * Emits quotes for [symbols], which are in priority order (the set's iteration order). Implementations poll or stream;

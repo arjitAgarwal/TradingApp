@@ -195,7 +195,8 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
             underlying = u?.displayName, onClose = { sel = null },
             onOpen = { sel = null; nav.contract(p.instrumentId) },
             onChart = u?.let { { sel = null; nav.index(it) } },
-            onChain = u?.let { { sel = null; nav.chain(it) } },
+            // An index option opens its index chain; a stock option opens that stock's chain (stock F&O is all on NSE).
+            onChain = u?.let { { sel = null; nav.chain(it) } } ?: vm.info(p.instrumentId)?.underlying?.let { n -> { sel = null; nav.stockChain("NSE:$n-EQ") } },
             onExit = { sel = null; vm.closePosition(p) },
             onBuy = { sel = null; nav.order(p.instrumentId, Side.BUY) })
     }
