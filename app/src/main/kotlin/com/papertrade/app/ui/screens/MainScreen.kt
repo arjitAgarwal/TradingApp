@@ -2,6 +2,11 @@ package com.papertrade.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.focus.focusRequester
@@ -58,8 +63,6 @@ import com.papertrade.app.ui.theme.Demo
 import com.papertrade.app.ui.theme.Gain
 import com.papertrade.app.ui.theme.Loss
 import com.papertrade.core.Side
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.ui.graphics.Color
 
 /** One thin, sideways-scrolling line: "NIFTY 50  24,913.50 [+148.80]   SENSEX …". Tap an index to open it. */
@@ -338,10 +341,10 @@ fun WatchlistScreen(vm: AppVM, nav: Nav, list: com.papertrade.app.data.repo.Watc
             }
         }
     }
-    action?.let { item -> QuickActionSheet(vm, item.symbol, quotes[item.symbol], { action = null },
+    action?.let { item -> QuickActionSheet(vm, nav, item.symbol, quotes[item.symbol], inList = true, onClose = { action = null },
         onOpen = { action = null; if (item.symbol.endsWith("-EQ")) nav.stock(item.symbol) else nav.contract(item.symbol) },
         onTrade = { side -> action = null; nav.order(item.symbol, side) },
-        onRemove = { action = null; vm.removeFromWatchlist(list.id, item.symbol) }) }
+        onStar = { action = null; vm.removeFromWatchlist(list.id, item.symbol) }) }
     if (renaming) NameDialog("Rename watchlist", list.name) { name -> renaming = false; name?.let { vm.renameWatchlist(list.id, it) } }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false }, title = { Text("Delete \"${list.name}\"?") },
         text = { Text("The watchlist and its ${list.items.size} items will be removed.") },
@@ -399,43 +402,137 @@ private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> U
     }
 }
 
-/** Groww-style sheet shown on tapping a watchlist row: name card (tap to open full details), Set alert, Remove, Sell / Buy. */
+/**
+ * Quote sheet shown on tapping a watchlist row or an Options-tab strike: "Swipe up for Stock Details" above it, then the
+ * name and price, a card with Open/High/Low/Prev. Close over the five-level market depth, ☆ / Option Chain / Charts,
+ * and BUY / SELL. Swiping up (or tapping the hint) opens the full details page; [inList] fills the star.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QuickActionSheet(vm: AppVM, symbol: String, q: MarketQuote?, onClose: () -> Unit, onOpen: () -> Unit, onTrade: (Side) -> Unit, onRemove: (() -> Unit)?) {
+private fun QuickActionSheet(vm: AppVM, nav: Nav, symbol: String, q: MarketQuote?, inList: Boolean, onClose: () -> Unit, onOpen: () -> Unit,
+                             onTrade: (Side) -> Unit, onStar: () -> Unit) {
     var info by remember(symbol) { mutableStateOf(vm.info(symbol)) }
     LaunchedEffect(symbol) { if (info == null && symbol.endsWith("-EQ")) vm.equityInfo(symbol).onSuccess { info = it; vm.register(it) } }
-    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).testTag("quick_actions")) {
-            OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onOpen).testTag("quick_open"), shape = RoundedCornerShape(16.dp)) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(Fmt.label(symbol, info), fontSize = 17.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f, fill = false))
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Open details")
-                    Spacer(Modifier.width(12.dp))
+    var depth by remember(symbol) { mutableStateOf<com.papertrade.app.data.market.MarketDepth?>(null) }; var depthError by remember(symbol) { mutableStateOf<String?>(null) }
+    LaunchedEffect(symbol) {
+        // One request every 5 s while the sheet is open; a live market that has shut won't change, so read it once.
+        while (true) {
+            vm.depth(symbol).fold({ depth = it; depthError = null }, { depthError = it.message })
+            if (vm.provider.value.mode != DataMode.DEMO && !com.papertrade.core.MarketHours.isLikelyOpen(java.time.Instant.now())) break
+            kotlinx.coroutines.delay(5_000)
+        }
+    }
+    // Index contracts open the index's chain and chart; a stock or stock contract opens the stock's.
+    val idx = Underlying.values().firstOrNull { it.name == info?.underlying }
+    val stock = if (symbol.endsWith("-EQ")) symbol else info?.underlying?.takeIf { idx == null }?.let { "NSE:$it-EQ" }
+    // Same text as the watchlist row, but with the month in normal case: "03-Nov-26 23350 PE • NSE FO".
+    val label = rowLabel(symbol, info).let { (n, sub) -> n to (info?.expiry?.format(rowDate)?.let { d -> sub.replace(d.uppercase(), d) } ?: sub) }
+    val c = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface)
+    val swipeUp = with(LocalDensity.current) { 60.dp.toPx() }
+    // Dark slate scrim so the white hint reads over the page; the sheet's white runs to the bottom edge (its own insets are off).
+    ModalBottomSheet(onDismissRequest = onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Color.Transparent,
+        shape = androidx.compose.ui.graphics.RectangleShape, tonalElevation = 0.dp, dragHandle = null, scrimColor = Color(0xD9333A47),
+        contentWindowInsets = { WindowInsets(0) }) {
+        // Watches drags without consuming them, so the sheet still swipes down to close.
+        Column(Modifier.testTag("quick_actions").pointerInput(symbol) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false); var opened = false
+                while (true) {
+                    val ch = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                    if (!opened && down.position.y - ch.position.y > swipeUp) { opened = true; onOpen() }
+                    if (!ch.pressed) break
+                }
+            }
+        }) {
+            Column(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(bottom = 16.dp).testTag("quick_open"), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.KeyboardArrowUp, null, Modifier.size(width = 64.dp, height = 28.dp), tint = Color.White)
+                Text("Swipe up for Stock Details", fontSize = 15.sp, color = Color.White, fontWeight = FontWeight.Medium)
+            }
+            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Column(Modifier.weight(1f)) {
+                        Text(label.first, fontSize = 18.sp, lineHeight = 24.sp, maxLines = 1)
+                        Text(label.second, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+                    }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text(Fmt.rupee(q?.ltp), fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                        Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", fontSize = 13.sp, color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurfaceVariant))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(Fmt.rupee(q?.ltp), fontSize = 18.sp, lineHeight = 24.sp, color = c)
+                            q?.change?.takeIf { it.signum() != 0 }?.let { Text(if (it.signum() > 0) "▲" else "▼", fontSize = 12.sp, color = c, modifier = Modifier.padding(start = 3.dp)) }
+                        }
+                        Text("${Fmt.signed(q?.change)}  (${Fmt.pct(q?.changePct)})", fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                DepthCard(depth, q, depthError)
+                Spacer(Modifier.height(20.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.height(36.dp).width(48.dp).clip(CircleShape).background(SheetPill).clickable(onClick = onStar).testTag("quick_star"), contentAlignment = Alignment.Center) {
+                        Icon(if (inList) Icons.Default.Star else Icons.Default.StarBorder, if (inList) "Remove from watchlist" else "Add to watchlist", Modifier.size(22.dp), tint = Color(0xFFF5A623))
+                    }
+                    SheetPillButton(Icons.Default.Link, "Option Chain", "quick_chain", enabled = idx != null || stock != null) { onClose(); if (idx != null) nav.chain(idx) else stock?.let(nav.stockChain) }
+                    SheetPillButton(Icons.Default.CandlestickChart, "Charts", "quick_charts", enabled = idx != null || stock != null) { onClose(); if (idx != null) nav.index(idx) else stock?.let(nav.stock) }
+                }
+                if (info == null) Text("Contract details unavailable, so this can't be traded right now.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp))
+                Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button({ onTrade(Side.BUY) }, Modifier.weight(1f).height(52.dp).testTag("btn_buy"), enabled = info != null, shape = RoundedCornerShape(4.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SheetBuy, contentColor = Color.White)) { Text("BUY", fontSize = 16.sp, fontWeight = FontWeight.Medium) }
+                    Button({ onTrade(Side.SELL) }, Modifier.weight(1f).height(52.dp).testTag("btn_sell"), enabled = info != null, shape = RoundedCornerShape(4.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SheetSell, contentColor = Color.White)) { Text("SELL", fontSize = 16.sp, fontWeight = FontWeight.Medium) }
+                }
+            }
+        }
+    }
+}
+
+private val SheetPill = Color(0xFFEEF0FA); private val SheetBuy = Color(0xFF00916E); private val SheetSell = Color(0xFFD64F4F)
+
+@Composable
+private fun SheetPillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tag: String, enabled: Boolean, onClick: () -> Unit) {
+    Row(Modifier.height(36.dp).clip(CircleShape).background(SheetPill).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(18.dp), tint = Accent); Spacer(Modifier.width(8.dp)); Text(label, fontSize = 15.sp, color = if (enabled) Accent else MaterialTheme.colorScheme.outline)
+    }
+}
+
+/**
+ * Open / High / Low / Prev. Close on a grey strip, then "Qty | Buy Price | Sell Price | Qty" for the best five levels
+ * (buy prices green, sell red) and the total quantities. Falls back to the quote's OHLC when depth isn't available.
+ */
+@Composable
+private fun DepthCard(d: com.papertrade.app.data.market.MarketDepth?, q: MarketQuote?, error: String?) {
+    val line = MaterialTheme.colorScheme.outlineVariant
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(1.dp, line, RoundedCornerShape(12.dp)).testTag("depth_card")) {
+        Row(Modifier.fillMaxWidth().background(Color(0xFFF2F4F8)).padding(vertical = 10.dp)) {
+            listOf("Open" to (d?.open ?: q?.open), "High" to (d?.high ?: q?.high), "Low" to (d?.low ?: q?.low), "Prev. Close" to (d?.prevClose ?: q?.prevClose)).forEach { (k, v) ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(k, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 1); Text(Fmt.inr(v), fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp), maxLines = 1)
+                }
+            }
+        }
+        HorizontalDivider(color = line)
+        Row(Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Qty", fontSize = 13.sp, modifier = Modifier.weight(0.7f)); Text("Buy Price", fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.weight(1f))
+            Text("Sell Price", fontSize = 13.sp, modifier = Modifier.weight(1f).padding(start = 16.dp)); Text("Qty", fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.weight(0.7f))
+        }
+        HorizontalDivider(color = line)
+        if (d == null || (d.bids.isEmpty() && d.asks.isEmpty())) {
+            Text(if (error != null) "Market depth unavailable: $error" else "Loading market depth…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(16.dp))
+        } else {
+            Column(Modifier.padding(vertical = 6.dp)) {
+                (0 until 5).forEach { i -> val b = d.bids.getOrNull(i); val a = d.asks.getOrNull(i)
+                    Row(Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(b?.qty?.toString() ?: "", fontSize = 13.sp, modifier = Modifier.weight(0.7f))
+                        Text(b?.let { Fmt.rupee(it.price) } ?: "", fontSize = 13.sp, color = Gain, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.weight(1f))
+                        Text(a?.let { Fmt.rupee(it.price) } ?: "", fontSize = 13.sp, color = Loss, modifier = Modifier.weight(1f).padding(start = 16.dp))
+                        Text(a?.qty?.toString() ?: "", fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.weight(0.7f))
                     }
                 }
             }
-            // Alerts aren't built yet; the row is here so the sheet matches the target layout.
-            Row(Modifier.fillMaxWidth().clickable { vm.messages.tryEmit("Price alerts are coming soon") }.padding(vertical = 16.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.NotificationsNone, null); Spacer(Modifier.width(16.dp)); Text("Set alert", fontSize = 16.sp)
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            // Rows have no star (as in Groww), so removal lives here. Options-tab strikes aren't in a list, so they have none.
-            if (onRemove != null) {
-                Row(Modifier.fillMaxWidth().clickable(onClick = onRemove).padding(vertical = 16.dp, horizontal = 4.dp).testTag("quick_remove"), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.DeleteOutline, null); Spacer(Modifier.width(16.dp)); Text("Remove from watchlist", fontSize = 16.sp)
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
-            if (info == null) Text("Contract details unavailable, so this can't be traded right now.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
-            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button({ onTrade(Side.SELL) }, Modifier.weight(1f).height(52.dp).testTag("btn_sell"), enabled = info != null, shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Loss, contentColor = Color.White)) { Text("Sell", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
-                Button({ onTrade(Side.BUY) }, Modifier.weight(1f).height(52.dp).testTag("btn_buy"), enabled = info != null, shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Gain, contentColor = Color.White)) { Text("Buy", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
+            Row(Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(d.totalBuyQty?.toString() ?: "—", fontSize = 15.sp, modifier = Modifier.weight(0.7f))
+                Text("Total Quantity", fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.weight(2f))
+                Text(d.totalSellQty?.toString() ?: "—", fontSize = 15.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.weight(0.7f))
             }
         }
     }
@@ -551,7 +648,7 @@ private fun OptionsTab(vm: AppVM, nav: Nav) {
     var expiry by remember(u) { mutableStateOf<java.time.LocalDate?>(null) } // null: the nearest one
     var chain by remember(u) { mutableStateOf<com.papertrade.app.data.market.OptionChain?>(null) }; var error by remember(u) { mutableStateOf<String?>(null) }
     var action by remember { mutableStateOf<String?>(null) }
-    val quotes by vm.quotes.collectAsState(); val provider by vm.provider.collectAsState()
+    val quotes by vm.quotes.collectAsState(); val provider by vm.provider.collectAsState(); val lists by vm.watchlists.collectAsState()
     LaunchedEffect(u, expiry, provider) {
         // One chain read gives the strikes; their prices then tick through the quote feed. Re-read each minute so the
         // money line follows the index (1 request a minute, well inside the FYERS limits), and stop once a live market shuts.
@@ -598,8 +695,11 @@ private fun OptionsTab(vm: AppVM, nav: Nav) {
             PillButton(Icons.Default.Link, "Option Chain", Modifier.weight(1f).testTag("opt_chain")) { nav.chain(u) }
         }
     }
-    action?.let { sym -> QuickActionSheet(vm, sym, quotes[sym], { action = null }, onOpen = { action = null; nav.contract(sym) },
-        onTrade = { side -> action = null; nav.order(sym, side) }, onRemove = null) }
+    action?.let { sym -> val holder = lists.firstOrNull { w -> w.items.any { it.symbol == sym } }
+        QuickActionSheet(vm, nav, sym, quotes[sym], inList = holder != null, onClose = { action = null }, onOpen = { action = null; nav.contract(sym) },
+            onTrade = { side -> action = null; nav.order(sym, side) },
+            // ☆ adds the strike to the first watchlist, or takes it out of the one that holds it.
+            onStar = { if (holder != null) vm.removeFromWatchlist(holder.id, sym) else lists.firstOrNull()?.let { w -> vm.info(sym)?.let(vm::register); vm.addToWatchlist(w.id, sym, vm.info(sym)?.name ?: sym) } }) }
 }
 
 /** "Call | Put" in one outlined pill; the selected half is filled blue. */

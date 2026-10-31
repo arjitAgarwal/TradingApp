@@ -132,6 +132,7 @@ class AppVM(private val c: AppContainer) : ViewModel() {
     suspend fun optionChain(u: Underlying, expiry: LocalDate?, strikesEachSide: Int = 10) = provider.value.optionChain(u, expiry, strikesEachSide).onSuccess { ch ->
         ch.rows.forEach { r -> listOfNotNull(r.call, r.put).forEach { s -> s.info?.let { c.contracts[s.symbol] = it }; c.hub.seed(s.quote) } }
     }
+    suspend fun depth(symbol: String) = provider.value.depth(symbol)
     suspend fun search(q: String) = provider.value.searchEquities(q)
     suspend fun equityInfo(symbol: String) = provider.value.equityInfo(symbol).onSuccess { c.contracts[symbol] = it }
 }
