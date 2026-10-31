@@ -34,13 +34,14 @@ class MainActivity : ComponentActivity() {
                 val n = remember(nav) {
                     Nav(index = { nav.navigate("index/${it.name}") }, stock = { nav.navigate("stock/${Uri.encode(it)}") }, chain = { nav.navigate("chain/${it.name}") },
                         futures = { nav.navigate("futures/${it.name}") }, contract = { nav.navigate("contract/${Uri.encode(it)}") }, account = { nav.navigate("account") }, back = { nav.popBackStack() }, fyersLogin = { nav.navigate("fyers_login") }, upstoxLogin = { nav.navigate("upstox_login") },
-                        order = { s, side -> nav.navigate("order/${Uri.encode(s)}/${side.name}") })
+                        order = { s, side -> nav.navigate("order/${Uri.encode(s)}/${side.name}") }, stockChain = { nav.navigate("stockchain/${Uri.encode(it)}") })
                 }
                 val sym = navArgument("s") { type = NavType.StringType }; val und = navArgument("u") { type = NavType.StringType }
                 NavHost(nav, startDestination = "main") {
                     composable("main") { MainScreen(vm, n) }
                     composable("index/{u}", listOf(und)) { IndexScreen(container, vm, Underlying.valueOf(it.arguments!!.getString("u")!!), n) }
-                    composable("chain/{u}", listOf(und)) { ChainScreen(container, vm, Underlying.valueOf(it.arguments!!.getString("u")!!), n) }
+                    composable("chain/{u}", listOf(und)) { ChainScreen(container, vm, Underlying.valueOf(it.arguments!!.getString("u")!!).name, n) }
+                    composable("stockchain/{s}", listOf(sym)) { ChainScreen(container, vm, it.arguments!!.getString("s")!!, n) }
                     composable("futures/{u}", listOf(und)) { FuturesScreen(container, vm, Underlying.valueOf(it.arguments!!.getString("u")!!), n) }
                     composable("stock/{s}", listOf(sym)) { StockScreen(container, vm, it.arguments!!.getString("s")!!, n) }
                     composable("contract/{s}", listOf(sym)) { ContractScreen(vm, it.arguments!!.getString("s")!!, n) }

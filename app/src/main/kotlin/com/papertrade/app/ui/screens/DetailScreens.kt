@@ -81,6 +81,8 @@ fun StockScreen(c: AppContainer, vm: AppVM, symbol: String, nav: Nav) {
         err?.let { Text("Instrument metadata unavailable: $it", color = MaterialTheme.colorScheme.error) }
         val inList = lists.firstOrNull()?.items?.any { it.symbol == symbol } == true
         lists.firstOrNull()?.let { w -> info?.let { i -> OutlinedButton({ if (inList) vm.removeFromWatchlist(w.id, symbol) else vm.addToWatchlist(w.id, symbol, i.name) }) { Text(if (inList) "Remove from ${w.name}" else "Add to ${w.name}") } } }
+        // The chain screen says so if this stock has no options (most aren't in F&O).
+        OutlinedButton({ nav.stockChain(symbol) }, Modifier.fillMaxWidth().testTag("btn_stock_chain")) { Text("Option chain") }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button({ nav.order(symbol, Side.BUY) }, Modifier.weight(1f).testTag("btn_buy"), enabled = info != null) { Text("Buy") }
             OutlinedButton({ nav.order(symbol, Side.SELL) }, Modifier.weight(1f).testTag("btn_sell"), enabled = info != null) { Text("Sell") }
@@ -88,15 +90,17 @@ fun StockScreen(c: AppContainer, vm: AppVM, symbol: String, nav: Nav) {
     }
 }
 
+/** Option chain of [key]: an index name ("NIFTY") or a stock symbol ("NSE:RELIANCE-EQ"). */
 @Composable
-fun ChainScreen(c: AppContainer, vm: AppVM, u: Underlying, nav: Nav) {
-    val cv = scoped(c, "chain", u.name, ChainVM::class.java); val ui by cv.ui.collectAsState(); val now by vm.now.collectAsState()
-    ChainBody(vm, u, cv, ui, nav, now)
+fun ChainScreen(c: AppContainer, vm: AppVM, key: String, nav: Nav) {
+    val cv = scoped(c, "chain", key, ChainVM::class.java); val ui by cv.ui.collectAsState(); val now by vm.now.collectAsState()
+    val name = Underlying.values().firstOrNull { it.name == key }?.displayName ?: key.substringAfter(':').removeSuffix("-EQ")
+    ChainBody(vm, name, cv, ui, nav, now)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: Nav, now: java.time.Instant) {
+private fun ChainBody(vm: AppVM, name: String, cv: ChainVM, ui: ChainUi, nav: Nav, now: java.time.Instant) {
     val chain = ui.chain
     val lists by vm.watchlists.collectAsState(); val first = lists.firstOrNull()
     val snack = remember { SnackbarHostState() }
@@ -110,11 +114,11 @@ private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: N
         }
     }
     val inList = first?.items?.map { it.symbol }?.toSet().orEmpty()
-    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Text("${u.displayName} option chain") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
+    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Text("$name option chain") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
         Column(Modifier.padding(pad)) {
             if (chain == null) { if (ui.error != null) CenterMessage(if (ui.offline) "You're offline" else "Option chain unavailable", ui.error, cv::start) else Loading(); return@Column }
             Column(Modifier.padding(horizontal = 12.dp)) {
-                Text("${u.displayName}  ${Fmt.inr(chain.underlyingLtp)}", fontWeight = FontWeight.Bold)
+                Text("$name  ${Fmt.inr(chain.underlyingLtp)}", fontWeight = FontWeight.Bold)
                 val f = if (chain.source == com.papertrade.core.QuoteSource.LIVE) freshnessOf(chain.rows.firstNotNullOfOrNull { it.call?.quote ?: it.put?.quote }, now, vm.maxAgeSec()) else when (chain.source) {
                     com.papertrade.core.QuoteSource.DEMO -> Freshness.DEMO; else -> Freshness.CACHED }
                 FreshnessChip(f, Fmt.time(chain.asOf))

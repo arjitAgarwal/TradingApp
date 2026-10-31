@@ -41,6 +41,8 @@ places a real order or moves money. Network use is read-only market data.
 - FYERS Standard plan data APIs allow 50 req/min and 5,000/day, and a day-long block follows 3 per-minute breaches.
   REST polling stays at 3 s. Live ticks come from the FYERS Data Socket (HSM binary protocol, ported from the
   fyers-apiv3 SDK).
+- Option chains: NIFTY and SENSEX (`optionChain`), and F&O stocks by symbol (`stockOptionChain`, FYERS and DEMO; demo
+  stock options expire on the last Tuesday of the month). Upstox has no stock chains yet and says so.
 - Upstox polls every 1 s. Its V3 feed is unit-tested only; don't test Upstox live unless asked.
 - The emulator runs FYERS live; Upstox is not logged in there.
 
