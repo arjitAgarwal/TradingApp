@@ -248,7 +248,7 @@ private fun Chip(text: String, color: androidx.compose.ui.graphics.Color) = Box(
 /**
  * Open:   NIFTY 29-Sep-26 22450 PE ......... +₹191.10      Closed (greyed):  NIFTY 06-Oct-26 22300 PE ... +₹572.00
  *         1 Lot • Avg. ₹8.18 ..... LTP ₹9.10 (+133.33%)                      1 Lot • CF ...... LTP ₹46.10 (231.65%)
- *         [BUY] [CF] (1 Lot = 65) ...... ⚡ ONE TAP EXIT                      Buy ₹37.45 ............... Sell ₹46.25
+ *         [BUY] [CF] (1 Lot = 65) ...... EXIT AT MARKET                      Buy ₹37.45 ............... Sell ₹46.25
  * [booked] is (lots traded today, average buy, average sell) for a closed position, null for an open one.
  */
 @Composable
@@ -279,8 +279,7 @@ private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertr
                 // Closes the whole position at market straight away (paper money, so no confirmation step).
                 Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onExit).padding(horizontal = 2.dp, vertical = 2.dp).testTag("one_tap_exit_${p.instrumentId}"),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Text("⚡", fontSize = 14.sp, lineHeight = 16.sp); Spacer(Modifier.width(4.dp)) // the yellow emoji bolt, as in the reference
-                    Text("ONE TAP EXIT", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = ExitBlue)
+                    Text("EXIT AT MARKET", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = ExitBlue)
                 }
             } else {
                 Text("Buy ${Fmt.rupee(booked.second)}", fontSize = 14.sp, lineHeight = 18.sp, color = ink, modifier = Modifier.weight(1f))
@@ -292,7 +291,7 @@ private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertr
 }
 
 /** Quantity blue in the position sheet. */
-/** The dark aqua of the Positions toolbar and ONE TAP EXIT. */
+/** The dark aqua of the Positions toolbar and EXIT AT MARKET. */
 private val ExitBlue = androidx.compose.ui.graphics.Color(0xFF0E6E8C)
 
 private val ChipBlue = androidx.compose.ui.graphics.Color(0xFF5367FF)

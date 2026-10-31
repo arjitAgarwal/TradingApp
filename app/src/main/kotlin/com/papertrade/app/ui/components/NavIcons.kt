@@ -103,13 +103,16 @@ object NavIcons {
         line(1.6f) { moveTo(16f, 16f); lineTo(20.5f, 20.5f) }
     }
 
-    /** A shield whose outline breaks at the lower right for a ↗ arrow. */
+    /**
+     * A shield whose top dips inward to a peak in the middle; its right side stops halfway down, leaving room for a ↗
+     * arrow at the lower right.
+     */
     val secureExit = icon("SecureExit") {
         line(1.6f) {
-            moveTo(18.6f, 13.6f); curveTo(18.9f, 12.8f, 19f, 11.9f, 19f, 11f); lineTo(19f, 6.2f); lineTo(12f, 3.2f); lineTo(5f, 6.2f); lineTo(5f, 11f)
-            curveTo(5f, 15.3f, 8f, 19.2f, 12f, 20.6f); curveTo(12.6f, 20.4f, 13.2f, 20.1f, 13.7f, 19.8f)
+            moveTo(20.2f, 12.6f); lineTo(20.2f, 6.2f); curveTo(17.2f, 6.2f, 14.4f, 5f, 12f, 3f); curveTo(9.6f, 5f, 6.8f, 6.2f, 3.6f, 6.2f)
+            lineTo(3.6f, 10.6f); curveTo(3.6f, 15.6f, 7.2f, 19.6f, 12f, 21.4f)
         }
-        line(1.6f) { moveTo(15.2f, 20f); lineTo(20.2f, 15f); moveTo(16.6f, 15f); lineTo(20.2f, 15f); lineTo(20.2f, 18.6f) }
+        line(1.6f) { moveTo(13.6f, 21.2f); lineTo(19.4f, 15.6f); moveTo(15f, 15.6f); lineTo(19.4f, 15.6f); lineTo(19.4f, 20f) }
     }
 
     /** A rounded square with a ↗ arrow, with a second square showing behind it at the top left. */
