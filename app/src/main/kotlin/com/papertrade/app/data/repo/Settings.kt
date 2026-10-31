@@ -27,9 +27,12 @@ data class AppSettings(
     val liveSource: LiveSource = LiveSource.FYERS,
     /** The FYERS account is on the paid Prime plan (much higher data limits). */
     val fyersPrime: Boolean = false,
+    /** Test mode: let orders fill at the last price while the market is closed (or the price is old). */
+    val testClosedMarket: Boolean = false,
 ) {
     fun toExecutionConfig() = ExecutionConfig(
         maxQuoteAge = Duration.ofSeconds(maxQuoteAgeSec.toLong()),
+        allowClosedMarketFills = testClosedMarket,
         ltpSlippageBps = BigDecimal(slippageBps),
         maxQtyPerFill = partialFillCap.takeIf { it > 0 },
         charges = if (chargesEnabled) ChargeModel.ILLUSTRATIVE else ChargeModel.ZERO,
@@ -40,13 +43,15 @@ class SettingsStore(private val context: Context) {
     private val MODE = stringPreferencesKey("data_mode"); private val AGE = intPreferencesKey("quote_age")
     private val SLIP = intPreferencesKey("slip_bps"); private val CHG = booleanPreferencesKey("charges"); private val PART = intPreferencesKey("partial_cap")
     private val SOURCE = stringPreferencesKey("live_source"); private val PRIME = booleanPreferencesKey("fyers_prime")
+    private val TEST = booleanPreferencesKey("test_closed_market")
     val settings: Flow<AppSettings> = context.dataStore.data.map { p: Preferences ->
         val d = AppSettings()
         AppSettings(p[MODE]?.let { runCatching { DataMode.valueOf(it) }.getOrNull() } ?: d.dataMode, p[AGE] ?: d.maxQuoteAgeSec, p[SLIP] ?: d.slippageBps, p[CHG] ?: d.chargesEnabled, p[PART] ?: d.partialFillCap,
-            p[SOURCE]?.let { runCatching { LiveSource.valueOf(it) }.getOrNull() } ?: d.liveSource, p[PRIME] ?: d.fyersPrime)
+            p[SOURCE]?.let { runCatching { LiveSource.valueOf(it) }.getOrNull() } ?: d.liveSource, p[PRIME] ?: d.fyersPrime,
+            p[TEST] ?: d.testClosedMarket)
     }
     suspend fun update(s: AppSettings) = context.dataStore.edit { p ->
         p[MODE] = s.dataMode.name; p[AGE] = s.maxQuoteAgeSec; p[SLIP] = s.slippageBps; p[CHG] = s.chargesEnabled; p[PART] = s.partialFillCap; p[SOURCE] = s.liveSource.name
-        p[PRIME] = s.fyersPrime
+        p[PRIME] = s.fyersPrime; p[TEST] = s.testClosedMarket
     }
 }
