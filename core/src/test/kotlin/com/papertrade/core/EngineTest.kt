@@ -66,6 +66,19 @@ class EngineTest {
         assertTrue(f.s.fills.isEmpty())
     }
 
+    @Test fun testModeFillsAtTheLastPriceWhenTheMarketIsClosed() {
+        val f = Fx(ExecutionConfig(charges = ChargeModel.ZERO, allowClosedMarketFills = true))
+        val cached = f.q(RELIANCE.id, "100", "99.95", "100.05", at = T0.minus(Duration.ofHours(16)), src = QuoteSource.CACHED)
+        val buy = f.place(RELIANCE.id, Side.BUY, 10, cached)
+        assertEquals(OrderStatus.FILLED, buy.order!!.status); assertEquals(d("100.05"), buy.newFills[0].price)
+        // A limit order fills against a closed-market price too, still never worse than its limit.
+        f.now = f.now.plusSeconds(1)
+        val sell = f.place(RELIANCE.id, Side.SELL, 10, f.q(RELIANCE.id, "100", "99.95", "100.05", at = T0.minus(Duration.ofHours(15)), src = QuoteSource.CACHED), OrderType.LIMIT, "99.90")
+        assertEquals(OrderStatus.FILLED, sell.order!!.status); assertEquals(d("99.95"), sell.newFills[0].price)
+        // An invalid price is refused even in test mode.
+        assertEquals(OrderStatus.REJECTED, f.place(RELIANCE.id, Side.BUY, 1, f.q(RELIANCE.id, "0", src = QuoteSource.CACHED)).order!!.status)
+    }
+
     @Test fun limitBuyWaitsThenFillsOnlyOnNewEligibleQuote() {
         val f = Fx()
         val r = f.place(RELIANCE.id, Side.BUY, 10, f.q(RELIANCE.id, "100", "99.95", "100.05"), OrderType.LIMIT, "99.50")

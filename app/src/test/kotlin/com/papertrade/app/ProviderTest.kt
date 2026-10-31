@@ -26,4 +26,30 @@ class ProviderTest {
         assertEquals(11, c.rows.size); assertTrue(c.expiries.isNotEmpty())
         c.rows.forEach { r -> assertEquals(Segment.OPTION, r.call!!.info!!.segment); assertTrue(r.call!!.info!!.lotSize > 0) }
     }
+    @Test fun demoExpiriesFollowEachIndexsWeekday() = runBlocking {
+        // `fixed` is Friday 16 Oct 2026: NIFTY expires on Tuesdays, SENSEX on Thursdays.
+        assertEquals(java.time.LocalDate.of(2026, 10, 20), demo.optionChain(Underlying.NIFTY, null, 1).getOrThrow().expiries.first())
+        assertEquals(java.time.LocalDate.of(2026, 10, 22), demo.optionChain(Underlying.SENSEX, null, 1).getOrThrow().expiries.first())
+        assertEquals(java.time.LocalDate.of(2026, 10, 20), demo.futures(Underlying.NIFTY).getOrThrow().first().info.expiry)
+    }
+
+    @Test fun fyersDailyLimitStopsFurtherRequestsUntilTomorrow() = runBlocking {
+        var sent = 0
+        val http = okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+            sent++
+            okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1).code(429).message("Too Many Requests")
+                .body(okhttp3.ResponseBody.create(null, """{"code":-360,"message":"You've reached the Standard plan limit of 5,000 requests/day.","s":"error"}""")).build()
+        }.build()
+        var now = fixed
+        val creds = object : FyersCredentials { override suspend fun appId() = "APP"; override suspend fun accessToken() = "TOKEN" }
+        val fyers = FyersProvider(creds, java.io.File("build/tmp"), http, clock = { now })
+        val first = fyers.quotes(listOf("NSE:SBIN-EQ")).exceptionOrNull() as ProviderException
+        assertEquals(ProviderException.Kind.RATE_LIMIT, first.kind); assertTrue(first.message!!.contains("daily limit"))
+        now = fixed.plusSeconds(3600)
+        assertEquals(ProviderException.Kind.RATE_LIMIT, (fyers.quotes(listOf("NSE:SBIN-EQ")).exceptionOrNull() as ProviderException).kind)
+        assertEquals("blocked call must not reach FYERS", 1, sent)
+        now = fixed.plusSeconds(86_400)
+        fyers.quotes(listOf("NSE:SBIN-EQ"))
+        assertEquals("next day it tries again", 2, sent)
+    }
 }
