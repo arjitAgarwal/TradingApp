@@ -2,6 +2,9 @@ package com.papertrade.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Link
@@ -95,6 +98,9 @@ private enum class Section { HOME, WATCHLIST, PORTFOLIO, ORDERS }
 @Composable
 fun MainScreen(vm: AppVM, nav: Nav) {
     var section by rememberSaveable { mutableStateOf(Section.WATCHLIST) }; var ordersTab by rememberSaveable { mutableIntStateOf(0) }
+    // Search takes over the page below the header until closed (back arrow or system back).
+    var searching by rememberSaveable { mutableStateOf(false) }; var query by rememberSaveable { mutableStateOf("") }
+    androidx.activity.compose.BackHandler(searching) { searching = false; query = "" }
     val provider by vm.provider.collectAsState()
     LaunchedEffect(provider) { vm.loadExpiries() }
     val settings by vm.settings.collectAsState(); val feed by vm.feed.collectAsState()
@@ -108,18 +114,18 @@ fun MainScreen(vm: AppVM, nav: Nav) {
             // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode.
             Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
-            if (section == Section.ORDERS) OrdersTabs(ordersTab, { ordersTab = it }, onSearch = { section = Section.HOME }, onMenu = nav.account) else SearchBar { section = Section.HOME }
-            IndexCards(vm, nav.index)
-            HorizontalDivider()
+            if (section == Section.ORDERS && !searching) OrdersTabs(ordersTab, { ordersTab = it }, onSearch = { searching = true }, onMenu = nav.account)
+            else SearchBar(searching, query, { query = it }, onOpen = { searching = true }, onClose = { searching = false; query = "" })
+            if (!searching) { IndexCards(vm, nav.index); HorizontalDivider() }
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
                 Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
                     color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
             }
             if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
         }
-    }, bottomBar = { BottomBar(section, { section = it }, nav.account) }) { pad ->
+    }, bottomBar = { BottomBar(section, { section = it; searching = false; query = "" }, nav.account) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
-            when (section) {
+            if (searching) SearchResults(vm, nav, query) else when (section) {
                 Section.HOME -> ExploreScreen(vm, nav); Section.WATCHLIST -> WatchlistsPage(vm, nav)
                 Section.PORTFOLIO -> HoldingsScreen(vm, nav); Section.ORDERS -> if (ordersTab == 0) OrdersScreen(vm) else PositionsScreen(vm, nav)
             }
@@ -127,17 +133,64 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     }
 }
 
-/** Grey strip with a rounded search box; tapping it opens HOME, where stocks are searched. */
+/**
+ * Grey strip with a rounded search box. Tapping it makes it a live text field (keyboard up, ← to close, ✕ to clear);
+ * the results replace the page below.
+ */
 @Composable
-private fun SearchBar(onClick: () -> Unit) {
+private fun SearchBar(active: Boolean, query: String, onQuery: (String) -> Unit, onOpen: () -> Unit, onClose: () -> Unit) {
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(active) { if (active) focus.requestFocus() }
     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)).padding(horizontal = 17.dp, vertical = 13.dp)) {
         Row(Modifier.fillMaxWidth().height(39.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)).clickable(onClick = onClick)
+            .border(1.dp, if (active) Accent else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)).clickable(enabled = !active, onClick = onOpen)
             .padding(horizontal = 12.dp).testTag("header_search"), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Search, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.width(12.dp))
-            Text("Search for Reliance, Tata", fontSize = 14.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (active) Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close search", Modifier.size(22.dp).clip(CircleShape).clickable(onClick = onClose).testTag("search_close"))
+            else Icon(Icons.Default.Search, null, Modifier.size(22.dp), tint = dim)
+            Spacer(Modifier.width(12.dp))
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (query.isEmpty()) Text("Search for Reliance, Tata", fontSize = 14.sp, lineHeight = 18.sp, color = dim)
+                if (active) androidx.compose.foundation.text.BasicTextField(query, onQuery, singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent), modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("search"))
+            }
+            if (active && query.isNotEmpty()) Icon(Icons.Default.Close, "Clear", Modifier.size(20.dp).clip(CircleShape).clickable { onQuery("") }.testTag("search_clear"), tint = dim)
         }
     }
+}
+
+/** Stock search results under the header search bar: tap a row for the stock page, ☆ to add it to a watchlist. */
+@Composable
+private fun SearchResults(vm: AppVM, nav: Nav, query: String) {
+    val lists by vm.watchlists.collectAsState(); val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
+    var results by remember { mutableStateOf<UiState<List<com.papertrade.app.data.market.InstrumentInfo>>?>(null) }
+    var picking by remember { mutableStateOf<com.papertrade.app.data.market.InstrumentInfo?>(null) } // stock whose ☆ was tapped
+    val provider by vm.provider.collectAsState()
+    LaunchedEffect(query, provider) {
+        if (query.trim().length < 2) { results = null; return@LaunchedEffect }
+        kotlinx.coroutines.delay(350); results = UiState.Loading // wait for typing to pause
+        results = vm.search(query.trim()).fold({ UiState.Success(it) }, { it.toUi() })
+    }
+    DisposableEffect(results) {
+        val syms = (results as? UiState.Success)?.data?.take(10)?.map { it.symbol } ?: emptyList()
+        vm.subscribe("explore", syms.toSet()); onDispose { vm.unsubscribe("explore") }
+    }
+    LazyColumn(Modifier.fillMaxSize().testTag("search_results"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (val r = results) {
+            null -> item { Text("Type at least 2 letters of a stock's name or symbol. Tap ☆ to add it to a watchlist.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(4.dp)) }
+            UiState.Loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            is UiState.Error -> item { Text(r.message, color = MaterialTheme.colorScheme.error) }
+            is UiState.Success -> if (r.data.isEmpty()) item { Text("No matching stocks") } else items(r.data, key = { it.symbol }) { i ->
+                StockRow(i.symbol, i.name, quotes[i.symbol], freshnessOf(quotes[i.symbol], now, vm.maxAgeSec()), lists.any { w -> w.items.any { it.symbol == i.symbol } },
+                    onClick = { vm.info(i.symbol) ?: vm.register(i); nav.stock(i.symbol) },
+                    onToggle = { picking = i })
+            }
+        }
+    }
+    picking?.let { i -> WatchlistPicker(lists, i.symbol, onDismiss = { picking = null }) { w, add ->
+        if (add) { vm.register(i); vm.addToWatchlist(w.id, i.symbol, i.name) } else vm.removeFromWatchlist(w.id, i.symbol)
+    } }
 }
 
 /**
@@ -439,20 +492,7 @@ class Nav(val index: (Underlying) -> Unit, val stock: (String) -> Unit, val chai
 
 @Composable
 fun ExploreScreen(vm: AppVM, nav: Nav) {
-    val lists by vm.watchlists.collectAsState(); val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
-    var query by rememberSaveable { mutableStateOf("") }
-    var results by remember { mutableStateOf<UiState<List<com.papertrade.app.data.market.InstrumentInfo>>?>(null) }
-    var picking by remember { mutableStateOf<com.papertrade.app.data.market.InstrumentInfo?>(null) } // stock whose ☆ was tapped
-    val provider by vm.provider.collectAsState()
-    LaunchedEffect(query, provider) {
-        if (query.length < 2) { results = null; return@LaunchedEffect }
-        kotlinx.coroutines.delay(350); results = UiState.Loading
-        results = vm.search(query).fold({ UiState.Success(it) }, { it.toUi() })
-    }
-    DisposableEffect(results) {
-        val syms = (results as? UiState.Success)?.data?.take(10)?.map { it.symbol } ?: emptyList()
-        vm.subscribe("explore", syms.toSet()); onDispose { vm.unsubscribe("explore") }
-    }
+    val quotes by vm.quotes.collectAsState()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Market overview", fontWeight = FontWeight.SemiBold) }
         item {
@@ -465,21 +505,8 @@ fun ExploreScreen(vm: AppVM, nav: Nav) {
                     } } }
             }
         }
-        item { OutlinedTextField(query, { query = it }, label = { Text("Search stocks") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("search")) }
-        results?.let { r -> when (r) {
-            UiState.Loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            is UiState.Error -> item { Text(r.message, color = MaterialTheme.colorScheme.error) }
-            is UiState.Success -> if (r.data.isEmpty()) item { Text("No matching stocks") } else items(r.data, key = { it.symbol }) { i ->
-                StockRow(i.symbol, i.name, quotes[i.symbol], freshnessOf(quotes[i.symbol], now, vm.maxAgeSec()), lists.any { w -> w.items.any { it.symbol == i.symbol } },
-                    onClick = { vm.info(i.symbol) ?: vm.register(i); nav.stock(i.symbol) },
-                    onToggle = { picking = i })
-            }
-        } }
-        if (results == null) item { Text("Search for a stock and tap ☆ to add it to a watchlist.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { Text("Use the search bar at the top to find a stock, then tap ☆ to add it to a watchlist.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
-    picking?.let { i -> WatchlistPicker(lists, i.symbol, onDismiss = { picking = null }) { w, add ->
-        if (add) { vm.register(i); vm.addToWatchlist(w.id, i.symbol, i.name) } else vm.removeFromWatchlist(w.id, i.symbol)
-    } }
 }
 
 /** "Add to watchlist" sheet: one checkbox per watchlist; ticking adds, unticking removes. */
