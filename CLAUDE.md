@@ -24,6 +24,10 @@ places a real order or moves money. Network use is read-only market data.
 - Tests: `./gradlew :core:test :app:testDebugUnitTest`
 - adb: `C:/Users/Arjit/AppData/Local/Android/Sdk/platform-tools/adb.exe` (use the full path)
 - `local.properties` holds SDK paths and optional FYERS app credentials. It is git-ignored; never commit it.
+- Each branch builds a separate app, so all three install side by side. `app/build.gradle.kts` reads the current git
+  branch at build time: `grow` gives `com.papertrade.app.grow` "ALPHA Grow", `Angel` gives `com.papertrade.app.angel`
+  "ALPHA Angel", and `version2` (or any other branch) gives `com.papertrade.app` "ALPHA". `versionCode` is the commit
+  count, so a newer build of the same branch installs as an update. Build from the branch you mean to ship.
 
 ## Code conventions
 - Money is `BigDecimal` everywhere. Never use Kotlin `/` on BigDecimal (it truncates); use `Dec.div`.
@@ -58,4 +62,5 @@ places a real order or moves money. Network use is read-only market data.
   - When a fix is found while working on a UI branch, make it on `version2` and then merge it across.
 - "Generate the apk" means: build the debug APK and copy it to `C:\Users\Arjit\Desktop\Alpha\`, named after the branch:
   `alpha_vN.apk` from `version2`, `alpha_grow_vN.apk` from `grow`, `alpha_angel_vN.apk` from `Angel`. N is one more than
-  the highest number already used by that prefix (each counts on its own). Never overwrite an existing APK.
+  the highest number already used by that prefix (each counts on its own). Never overwrite an existing APK. Each prefix
+  is its own app on the phone (see Build and test); a higher N of the same prefix installs over the previous one.
