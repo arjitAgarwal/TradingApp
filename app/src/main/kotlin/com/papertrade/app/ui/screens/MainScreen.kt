@@ -435,7 +435,7 @@ private fun feedMessage(s: FeedState, m: String?) = when (s) {
 
 class Nav(val index: (Underlying) -> Unit, val stock: (String) -> Unit, val chain: (Underlying) -> Unit, val futures: (Underlying) -> Unit,
           val contract: (String) -> Unit, val account: () -> Unit, val back: () -> Unit, val fyersLogin: () -> Unit = {}, val upstoxLogin: () -> Unit = {},
-          val order: (String, Side) -> Unit = { _, _ -> })
+          val order: (String, Side) -> Unit = { _, _ -> }, val stockChain: (String) -> Unit = {})
 
 @Composable
 fun ExploreScreen(vm: AppVM, nav: Nav) {

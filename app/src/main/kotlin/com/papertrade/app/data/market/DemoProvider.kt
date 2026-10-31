@@ -14,6 +14,7 @@ import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.TemporalAdjusters
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.max
@@ -37,6 +38,7 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
     private val bases = mapOf("NSE:NIFTY50-INDEX" to 25000.0, "BSE:SENSEX-INDEX" to 82000.0) + equities.mapValues { it.value.second }
     private val lot = mapOf(Underlying.NIFTY to 75, Underlying.SENSEX to 20)
     private val step = mapOf(Underlying.NIFTY to 50, Underlying.SENSEX to 100)
+    private val stockLot = mapOf("RELIANCE" to 500, "TCS" to 175, "INFY" to 400, "HDFCBANK" to 550, "SBIN" to 750)
     private val ymd = DateTimeFormatter.ofPattern("yyMMdd")
 
     private fun bd(v: Double, scale: Int = 2) = BigDecimal(v).setScale(scale, RoundingMode.HALF_EVEN)
@@ -63,7 +65,23 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
         return out
     }
 
-    private fun optSymbol(u: Underlying, e: LocalDate, strike: Int, t: OptionType) = "DEMO:${u.name}${e.format(ymd)}$strike${t.name}"
+    /** Stock options expire monthly on the last Tuesday; the next [n] such dates, this month's included if not past. */
+    private fun monthlyExpiries(n: Int): List<LocalDate> {
+        val today = clock().atZone(zone).toLocalDate()
+        return generateSequence(today.withDayOfMonth(1)) { it.plusMonths(1) }.map { it.with(TemporalAdjusters.lastInMonth(DayOfWeek.TUESDAY)) }
+            .filter { !it.isBefore(today) }.take(n).toList()
+    }
+
+    /** What a demo derivative is written on: an index or an F&O stock. [name] heads its symbols, e.g. "DEMO:RELIANCE261124 2900CE". */
+    private data class Root(val name: String, val displayName: String, val spotSymbol: String, val lot: Int, val step: Int)
+    private val roots: List<Root> = Underlying.values().map { Root(it.name, it.displayName, it.indexSymbol, lot.getValue(it), step.getValue(it)) } +
+        equities.map { (s, v) -> val n = s.removePrefix("NSE:").removeSuffix("-EQ")
+            Root(n, n, s, stockLot.getValue(n), when { v.second >= 3000 -> 50; v.second >= 1000 -> 20; else -> 10 }) }
+    private fun root(u: Underlying) = roots.first { it.name == u.name }
+    /** The root of a demo derivative symbol: its name is followed straight away by the yyMMdd expiry. */
+    private fun rootOf(s: String): Root? = s.removePrefix("DEMO:").let { b -> roots.firstOrNull { b.startsWith(it.name) && b.getOrNull(it.name.length)?.isDigit() == true } }
+
+    private fun optSymbol(r: Root, e: LocalDate, strike: Int, t: OptionType) = "DEMO:${r.name}${e.format(ymd)}$strike${t.name}"
     private fun futSymbol(u: Underlying, e: LocalDate) = "DEMO:${u.name}${e.format(ymd)}FUT"
 
     private fun optionPrice(spot: Double, strike: Int, t: OptionType): Double {
@@ -71,8 +89,8 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
         return max(0.5, intrinsic + spot * 0.004 * exp(-abs(spot - strike) / (spot * 0.02)))
     }
 
-    private fun optionInfo(u: Underlying, e: LocalDate, strike: Int, t: OptionType) = InstrumentInfo(
-        optSymbol(u, e, strike, t), "${u.displayName} $strike ${t.name} $e (demo)", Segment.OPTION, lot.getValue(u), BigDecimal("0.05"), e, BigDecimal(strike), t, u.name)
+    private fun optionInfo(r: Root, e: LocalDate, strike: Int, t: OptionType) = InstrumentInfo(
+        optSymbol(r, e, strike, t), "${r.displayName} $strike ${t.name} $e (demo)", Segment.OPTION, r.lot, BigDecimal("0.05"), e, BigDecimal(strike), t, r.name)
 
     override suspend fun quotes(symbols: List<String>): Result<List<MarketQuote>> = runCatching {
         val now = clock()
@@ -86,20 +104,20 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
     }
 
     private fun demoDerivativeQuote(s: String, now: Instant): MarketQuote? {
-        val u = Underlying.values().firstOrNull { s.startsWith("DEMO:${it.name}") } ?: return null
-        return quoteFor(s, derivativePrice(s, u, spot(bases.getValue(u.indexSymbol), u.indexSymbol, now)), derivativePrice(s, u, bases.getValue(u.indexSymbol)), now)
+        val r = rootOf(s) ?: return null
+        return quoteFor(s, derivativePrice(s, r, spot(bases.getValue(r.spotSymbol), r.spotSymbol, now)), derivativePrice(s, r, bases.getValue(r.spotSymbol)), now)
     }
 
-    /** A demo future or option priced off the given index level. */
-    private fun derivativePrice(s: String, u: Underlying, index: Double): Double {
-        if (s.endsWith("FUT")) return index * 1.002
-        val body = s.removePrefix("DEMO:${u.name}"); val strike = body.substring(6, body.length - 2).toInt()
-        return optionPrice(index, strike, if (s.endsWith("CE")) OptionType.CE else OptionType.PE)
+    /** A demo future or option priced off the given index or stock price. */
+    private fun derivativePrice(s: String, r: Root, spot: Double): Double {
+        if (s.endsWith("FUT")) return spot * 1.002
+        val body = s.removePrefix("DEMO:${r.name}"); val strike = body.substring(6, body.length - 2).toInt()
+        return optionPrice(spot, strike, if (s.endsWith("CE")) OptionType.CE else OptionType.PE)
     }
 
     /** Synthetic price of any demo symbol at [at]; null for symbols this provider doesn't know. */
     private fun priceAt(s: String, at: Instant): Double? = bases[s]?.let { spot(it, s, at) }
-        ?: Underlying.values().firstOrNull { s.startsWith("DEMO:${it.name}") }?.let { u -> derivativePrice(s, u, spot(bases.getValue(u.indexSymbol), u.indexSymbol, at)) }
+        ?: rootOf(s)?.let { r -> derivativePrice(s, r, spot(bases.getValue(r.spotSymbol), r.spotSymbol, at)) }
 
     override suspend fun searchEquities(query: String) = runCatching {
         equities.filter { it.key.contains(query, true) || it.value.first.contains(query, true) }.map { (s, v) -> info(s, v.first) }
@@ -116,18 +134,28 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
     }
 
     override suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
-        val now = clock(); val expiries = nextExpiries(underlying, 3); val e = expiry ?: expiries.first()
-        val spot = spot(bases.getValue(underlying.indexSymbol), underlying.indexSymbol, now)
-        val st = step.getValue(underlying); val atm = (Math.round(spot / st) * st).toInt()
+        chain(root(underlying), underlying, nextExpiries(underlying, 3), expiry, strikesEachSide)
+    }
+
+    override suspend fun stockOptionChain(symbol: String, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
+        val r = roots.firstOrNull { it.spotSymbol == symbol && Underlying.values().none { u -> u.name == it.name } }
+            ?: throw ProviderException("No options are traded on ${symbol.substringAfter(':').removeSuffix("-EQ")}", ProviderException.Kind.UNSUPPORTED)
+        chain(r, null, monthlyExpiries(3), expiry, strikesEachSide)
+    }
+
+    private fun chain(r: Root, underlying: Underlying?, expiries: List<LocalDate>, expiry: LocalDate?, strikesEachSide: Int): OptionChain {
+        val now = clock(); val e = expiry ?: expiries.first()
+        val spot = spot(bases.getValue(r.spotSymbol), r.spotSymbol, now)
+        val atm = (Math.round(spot / r.step) * r.step).toInt()
         val rows = (-strikesEachSide..strikesEachSide).map { k ->
-            val strike = atm + k * st
+            val strike = atm + k * r.step
             fun side(t: OptionType): OptionSide {
-                val sym = optSymbol(underlying, e, strike, t)
-                return OptionSide(optionInfo(underlying, e, strike, t), sym, demoDerivativeQuote(sym, now)!!.copy(volume = 1000L + abs(k) * 10, openInterest = 50_000L / (1 + abs(k))))
+                val sym = optSymbol(r, e, strike, t)
+                return OptionSide(optionInfo(r, e, strike, t), sym, demoDerivativeQuote(sym, now)!!.copy(volume = 1000L + abs(k) * 10, openInterest = 50_000L / (1 + abs(k))))
             }
             OptionRow(BigDecimal(strike), side(OptionType.CE), side(OptionType.PE))
         }
-        OptionChain(underlying, tick(spot), expiries, e, rows, now, QuoteSource.DEMO)
+        return OptionChain(underlying, tick(spot), expiries, e, rows, now, QuoteSource.DEMO)
     }
 
     override suspend fun candles(symbol: String, interval: CandleInterval) = runCatching {

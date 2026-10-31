@@ -152,7 +152,9 @@ class CandlesVM(private val c: AppContainer, private val symbol: String) : ViewM
 
 data class ChainUi(val chain: OptionChain? = null, val error: String? = null, val loading: Boolean = true, val offline: Boolean = false)
 
-class ChainVM(private val c: AppContainer, private val u: Underlying) : ViewModel() {
+/** Option chain of [key]: an index name ("NIFTY") or a stock symbol ("NSE:RELIANCE-EQ"). */
+class ChainVM(private val c: AppContainer, private val key: String) : ViewModel() {
+    private val u = Underlying.values().firstOrNull { it.name == key }
     val ui = MutableStateFlow(ChainUi())
     private var expiry: LocalDate? = null
     private var job: Job? = null
@@ -163,7 +165,8 @@ class ChainVM(private val c: AppContainer, private val u: Underlying) : ViewMode
         job = viewModelScope.launch {
             while (true) {
                 c.hub.foreground.first { it } // no refreshes while the app is in the background
-                c.hub.provider.value.optionChain(u, expiry).fold({ ch ->
+                val p = c.hub.provider.value
+                (if (u != null) p.optionChain(u, expiry) else p.stockOptionChain(key, expiry)).fold({ ch ->
                     ch.rows.forEach { r -> listOfNotNull(r.call, r.put).forEach { s -> s.info?.let { c.contracts[s.symbol] = it }; c.hub.seed(s.quote) } }
                     expiry = ch.selectedExpiry
                     ui.value = ChainUi(ch)
@@ -197,7 +200,7 @@ class Factory(private val c: AppContainer) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when (modelClass) {
         AppVM::class.java -> AppVM(c)
         CandlesVM::class.java -> CandlesVM(c, arg)
-        ChainVM::class.java -> ChainVM(c, Underlying.valueOf(arg))
+        ChainVM::class.java -> ChainVM(c, arg)
         FuturesVM::class.java -> FuturesVM(c, Underlying.valueOf(arg))
         else -> error("Unknown VM $modelClass")
     } as T

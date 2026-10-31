@@ -16,15 +16,26 @@ fun sha256(s: String) = MessageDigest.getInstance("SHA-256").digest(s.toByteArra
 val fyersAppId: String = localProps.getProperty("fyers.appId", "").trim()
 val fyersSecret: String = localProps.getProperty("fyers.secret", "").trim()
 
+// Each UI branch builds its own app, so all three install side by side; later builds of a branch install as updates.
+// version2 (and any other branch) is com.papertrade.app "ALPHA"; grow and Angel add a suffix and a name. The version
+// code is the branch's commit count, so it only goes up.
+fun git(vararg args: String): String = runCatching {
+    providers.exec { commandLine("git", *args); isIgnoreExitValue = true }.standardOutput.asText.get().trim()
+}.getOrDefault("")
+val branch = git("rev-parse", "--abbrev-ref", "HEAD")
+val (idSuffix, appLabel) = when (branch) { "grow" -> ".grow" to "ALPHA Grow"; "Angel" -> ".angel" to "ALPHA Angel"; else -> "" to "ALPHA" }
+val commitCount = git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
+
 android {
     namespace = "com.papertrade.app"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.papertrade.app"
+        applicationId = "com.papertrade.app$idSuffix"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = commitCount
+        versionName = "0.1.$commitCount"
+        manifestPlaceholders["appLabel"] = appLabel
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "FYERS_APP_ID", "\"$fyersAppId\"")
         buildConfigField("String", "FYERS_APP_ID_HASH", "\"${if (fyersAppId.isNotEmpty() && fyersSecret.isNotEmpty()) sha256("$fyersAppId:$fyersSecret") else ""}\"")
