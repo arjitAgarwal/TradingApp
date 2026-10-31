@@ -23,7 +23,12 @@ fun git(vararg args: String): String = runCatching {
     providers.exec { commandLine("git", *args); isIgnoreExitValue = true }.standardOutput.asText.get().trim()
 }.getOrDefault("")
 val branch = git("rev-parse", "--abbrev-ref", "HEAD")
-val (idSuffix, appLabel) = when (branch) { "grow" -> ".grow" to "ALPHA Grow"; "Angel" -> ".angel" to "Angel Alpha"; else -> "" to "ALPHA" }
+// angel_N branches (angel_1, angel_2, ...) are more copies of the Angel app: com.papertrade.app.angelN "Angel Alpha N".
+val angelCopy = Regex("angel_(\\d+)").matchEntire(branch)?.groupValues?.get(1)
+val (idSuffix, appLabel) = when {
+    branch == "grow" -> ".grow" to "ALPHA Grow"; branch == "Angel" -> ".angel" to "Angel Alpha"
+    angelCopy != null -> ".angel$angelCopy" to "Angel Alpha $angelCopy"; else -> "" to "ALPHA"
+}
 val commitCount = git("rev-list", "--count", "HEAD").toIntOrNull() ?: 1
 
 android {
