@@ -32,7 +32,7 @@ class TradingRepository(
     private val db: AppDatabase,
     private val settings: suspend () -> AppSettings,
     private val clock: () -> Instant = { Instant.now() },
-    val startingCapital: BigDecimal = BigDecimal("1354510"),
+    val startingCapital: BigDecimal = BigDecimal("5000000"),
 ) {
     private val dao = db.trading(); private val market = db.marketCache()
     private val mutex = Mutex()
@@ -58,14 +58,15 @@ class TradingRepository(
     }
 
     /**
-     * One time: wallets created with the old ₹10,00,000 default move to [startingCapital]. The difference is added to cash with a
-     * ledger entry (ledger sum must equal cash), so trades, positions and net P&L stay exactly as they were.
+     * One time per raise: wallets created with an old default (₹10,00,000, then ₹13,54,510) move to [startingCapital]. The
+     * difference is added to cash with a ledger entry (ledger sum must equal cash), so trades, positions and net P&L stay
+     * exactly as they were. Each raise has its own entry id, so an earlier top-up never blocks a later one.
      */
     private suspend fun topUpOldCapital() {
         val w = dao.wallet()?.toDomain() ?: return
-        if (w.startingCapital.compareTo(BigDecimal("1000000")) != 0 || startingCapital.compareTo(w.startingCapital) == 0) return
+        if (OLD_DEFAULTS.none { it.compareTo(w.startingCapital) == 0 } || startingCapital.compareTo(w.startingCapital) <= 0) return
         val delta = startingCapital - w.startingCapital
-        val entry = LedgerEntry("capital-topup", LedgerType.INITIAL_CAPITAL, delta, null, clock(), "Starting virtual capital raised to ${startingCapital.toPlainString()}")
+        val entry = LedgerEntry("capital-topup-${startingCapital.toPlainString()}", LedgerType.INITIAL_CAPITAL, delta, null, clock(), "Starting virtual capital raised to ${startingCapital.toPlainString()}")
         dao.persistTrade(w.copy(startingCapital = startingCapital, cash = w.cash + delta).toEntity(), emptyList(), emptyList(), emptyList(),
             listOf(entry.toEntity(dao.ledger().size.toLong())))
     }
@@ -139,5 +140,10 @@ class TradingRepository(
         require(x.fills.all { it.orderId in orderIds }) { "Fill references unknown order" }
         x.instruments.forEach { market.upsertInstrument(it); instruments[it.symbol] = it.toInfo().toCore() }
         dao.replaceAll(x.wallet, x.orders, x.positions, x.fills, x.ledger)
+    }
+
+    private companion object {
+        /** Starting capitals of earlier versions; a wallet still on one of them is raised to the current default. */
+        val OLD_DEFAULTS = listOf(BigDecimal("1000000"), BigDecimal("1354510"))
     }
 }

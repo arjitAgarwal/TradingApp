@@ -33,8 +33,8 @@ class TradingDatabaseTest {
     private suspend fun open() { db = AppDatabase.build(ctx, name); repo = TradingRepository(db, { AppSettings(chargesEnabled = false) }); repo.init() }
     @After fun tearDown() { db.close(); ctx.deleteDatabase(name) }
 
-    @Test fun startsWithTenLakh() = runBlocking {
-        assertEquals(0, BigDecimal("1354510").compareTo(repo.account.first().wallet.cash))
+    @Test fun startsWithFiftyLakh() = runBlocking {
+        assertEquals(0, BigDecimal("5000000").compareTo(repo.account.first().wallet.cash))
     }
 
     @Test fun fillUpdatesWalletPositionLedgerAtomicallyAndSurvivesRestart() = runBlocking {
@@ -42,7 +42,18 @@ class TradingDatabaseTest {
         assertEquals(OrderStatus.FILLED, r.order!!.status)
         db.close(); open() // simulate process restart
         val s = repo.account.first()
-        assertEquals(0, BigDecimal("999000").compareTo(s.wallet.cash)); assertEquals(10, s.positions[info.symbol]!!.quantity); assertEquals(1, s.fills.size)
+        assertEquals(0, (repo.startingCapital - BigDecimal("1000")).compareTo(s.wallet.cash)); assertEquals(10, s.positions[info.symbol]!!.quantity); assertEquals(1, s.fills.size)
+        assertEquals(0, s.wallet.cash.compareTo(s.ledger.fold(BigDecimal.ZERO) { a, e -> a + e.amount }))
+    }
+
+    @Test fun oldDefaultWalletIsRaisedOnceKeepingTrades() = runBlocking {
+        db.close(); ctx.deleteDatabase(name)
+        db = AppDatabase.build(ctx, name); repo = TradingRepository(db, { AppSettings(chargesEnabled = false) }, startingCapital = BigDecimal("1354510")); repo.init()
+        repo.place(info, OrderRequest(info.symbol, Side.BUY, OrderType.MARKET, 10), q("100"))
+        db.close(); open(); db.close(); open() // the new default, twice: the top-up must happen once
+        val s = repo.account.first()
+        assertEquals(0, BigDecimal("5000000").compareTo(s.wallet.startingCapital)); assertEquals(0, BigDecimal("4999000").compareTo(s.wallet.cash))
+        assertEquals(10, s.positions[info.symbol]!!.quantity)
         assertEquals(0, s.wallet.cash.compareTo(s.ledger.fold(BigDecimal.ZERO) { a, e -> a + e.amount }))
     }
 
@@ -59,7 +70,8 @@ class TradingDatabaseTest {
 
     @Test fun tamperedImportIsRejectedWithoutChangingData() = runBlocking {
         repo.place(info, OrderRequest(info.symbol, Side.BUY, OrderType.MARKET, 3), q("50"))
-        val bad = repo.exportJson().replace("\"cash\": \"999850.00\"", "\"cash\": \"1.00\"").replace("\"cash\": \"999850\"", "\"cash\": \"1\"")
+        val cash = (repo.startingCapital - BigDecimal("150")).toPlainString(); val json = repo.exportJson()
+        val bad = json.replace("\"cash\": \"$cash.00\"", "\"cash\": \"1.00\"").replace("\"cash\": \"$cash\"", "\"cash\": \"1\""); assertNotEquals("the cash field was found", json, bad)
         try { repo.importJson(bad); fail("should reject") } catch (_: IllegalArgumentException) {}
         assertEquals(1, repo.account.first().fills.size)
     }
