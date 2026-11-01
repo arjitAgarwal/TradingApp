@@ -106,6 +106,12 @@ interface MarketDataProvider {
     suspend fun searchEquities(query: String): Result<List<InstrumentInfo>>
     suspend fun equityInfo(symbol: String): Result<InstrumentInfo>
     suspend fun futures(underlying: Underlying): Result<List<FutureContract>>
+    /**
+     * Unexpired futures (index and stock) whose underlying matches [query], nearest expiry first within each underlying;
+     * no quotes, callers subscribe. [ProviderException.Kind.UNSUPPORTED] where a provider can't list them.
+     */
+    suspend fun searchFutures(query: String): Result<List<InstrumentInfo>> =
+        Result.failure(ProviderException("$displayName can't search futures yet", ProviderException.Kind.UNSUPPORTED))
     /** [expiry] null = nearest expiry the provider lists. */
     suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int = 12): Result<OptionChain>
     /**

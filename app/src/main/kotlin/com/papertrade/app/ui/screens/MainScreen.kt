@@ -163,37 +163,111 @@ private fun SearchBar(active: Boolean, query: String, onQuery: (String) -> Unit,
     }
 }
 
-/** Stock search results under the header search bar: tap a row for the stock page, ☆ to add it to a watchlist. */
+/** Search chips; [ready] false for kinds the app has no data for yet (they say so instead of listing anything). */
+private enum class SearchKind(val label: String, val ready: Boolean = true) { ALL("All"), STOCK("Stock"), FNO("F&O"), ETF("ETF", false), MF("Mutual Fund", false) }
+
+/**
+ * Search results under the header search bar, with All / Stock / F&O chips. A stock row opens the stock page and its ☆
+ * adds it to a watchlist; a futures row (F&O, and below the stocks in All) adds the contract to a watchlist on a tap.
+ */
 @Composable
 private fun SearchResults(vm: AppVM, nav: Nav, query: String) {
     val lists by vm.watchlists.collectAsState(); val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState()
-    var results by remember { mutableStateOf<UiState<List<com.papertrade.app.data.market.InstrumentInfo>>?>(null) }
-    var picking by remember { mutableStateOf<com.papertrade.app.data.market.InstrumentInfo?>(null) } // stock whose ☆ was tapped
+    var kind by rememberSaveable { mutableStateOf(SearchKind.ALL) }
+    var stocks by remember { mutableStateOf<UiState<List<com.papertrade.app.data.market.InstrumentInfo>>?>(null) }
+    var futures by remember { mutableStateOf<UiState<List<com.papertrade.app.data.market.InstrumentInfo>>?>(null) }
+    var picking by remember { mutableStateOf<com.papertrade.app.data.market.InstrumentInfo?>(null) } // what the watchlist picker is for
     val provider by vm.provider.collectAsState()
     LaunchedEffect(query, provider) {
-        if (query.trim().length < 2) { results = null; return@LaunchedEffect }
-        kotlinx.coroutines.delay(350); results = UiState.Loading // wait for typing to pause
-        results = vm.search(query.trim()).fold({ UiState.Success(it) }, { it.toUi() })
+        if (query.trim().length < 2) { stocks = null; futures = null; return@LaunchedEffect }
+        kotlinx.coroutines.delay(350); stocks = UiState.Loading; futures = UiState.Loading // wait for typing to pause
+        stocks = vm.search(query.trim()).fold({ UiState.Success(it) }, { it.toUi() })
+        futures = vm.searchFutures(query.trim()).fold({ UiState.Success(it) }, { it.toUi() })
     }
-    DisposableEffect(results) {
-        val syms = (results as? UiState.Success)?.data?.take(10)?.map { it.symbol } ?: emptyList()
+    val shownStocks = if (kind == SearchKind.ALL || kind == SearchKind.STOCK) stocks else null
+    val shownFutures = if (kind == SearchKind.ALL || kind == SearchKind.FNO) futures else null
+    DisposableEffect(shownStocks, shownFutures) {
+        val syms = listOfNotNull(shownStocks, shownFutures).flatMap { r -> (r as? UiState.Success)?.data?.take(15)?.map { it.symbol }.orEmpty() }
         vm.subscribe("explore", syms.toSet()); onDispose { vm.unsubscribe("explore") }
     }
-    LazyColumn(Modifier.fillMaxSize().testTag("search_results"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        when (val r = results) {
-            null -> item { Text("Type at least 2 letters of a stock's name or symbol. Tap ☆ to add it to a watchlist.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(4.dp)) }
-            UiState.Loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            is UiState.Error -> item { Text(r.message, color = MaterialTheme.colorScheme.error) }
-            is UiState.Success -> if (r.data.isEmpty()) item { Text("No matching stocks") } else items(r.data, key = { it.symbol }) { i ->
-                StockRow(i.symbol, i.name, quotes[i.symbol], freshnessOf(quotes[i.symbol], now, vm.maxAgeSec()), lists.any { w -> w.items.any { it.symbol == i.symbol } },
-                    onClick = { vm.info(i.symbol) ?: vm.register(i); nav.stock(i.symbol) },
-                    onToggle = { picking = i })
+    fun starred(s: String) = lists.any { w -> w.items.any { it.symbol == s } }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SearchKind.values().forEach { k -> val on = k == kind
+                Box(Modifier.height(32.dp).widthIn(min = 64.dp).clip(RoundedCornerShape(6.dp)).border(1.dp, if (on) Accent else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp))
+                    .clickable { kind = k }.padding(horizontal = 16.dp).testTag("search_kind_${k.name}"), contentAlignment = Alignment.Center) {
+                    Text(k.label, fontSize = 14.sp, lineHeight = 18.sp, color = if (on) Accent else MaterialTheme.colorScheme.onSurface)
+                }
             }
+        }
+        LazyColumn(Modifier.fillMaxSize().testTag("search_results"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+            if (!kind.ready) item { Text("${kind.label} search is coming soon.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(4.dp).testTag("search_kind_soon")) }
+            else if (stocks == null) item { Text("Type at least 2 letters of a name or symbol. Tap ☆ to add it to a watchlist.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(4.dp)) }
+            when (val r = shownStocks) {
+                null -> {}
+                UiState.Loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                is UiState.Error -> item { Text(r.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(4.dp)) }
+                is UiState.Success -> if (r.data.isEmpty() && kind == SearchKind.STOCK) item { Text("No matching stocks", modifier = Modifier.padding(4.dp)) } else items(r.data, key = { it.symbol }) { i ->
+                    StockRow(i.symbol, i.name, quotes[i.symbol], freshnessOf(quotes[i.symbol], now, vm.maxAgeSec()), starred(i.symbol),
+                        onClick = { vm.info(i.symbol) ?: vm.register(i); nav.stock(i.symbol) },
+                        onToggle = { picking = i })
+                }
+            }
+            when (val r = shownFutures) {
+                null -> {}
+                UiState.Loading -> if (shownStocks !is UiState.Loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                // In All a provider without futures search just shows its stocks; in F&O it says why the list is empty.
+                is UiState.Error -> if (kind == SearchKind.FNO) item { Text(r.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(4.dp)) }
+                is UiState.Success -> if (r.data.isEmpty() && kind == SearchKind.FNO) item { Text("No matching futures", modifier = Modifier.padding(4.dp)) } else items(r.data, key = { it.symbol }) { i ->
+                    // A tap adds the contract straight to the first watchlist (or takes it out again); no picker.
+                    val first = lists.firstOrNull(); val inFirst = first?.items?.any { it.symbol == i.symbol } == true
+                    FutureSearchRow(i, quotes[i.symbol], inFirst) {
+                        when {
+                            first == null -> picking = i
+                            inFirst -> { vm.removeFromWatchlist(first.id, i.symbol); vm.messages.tryEmit("Removed from ${first.name}") }
+                            else -> { vm.register(i); vm.addToWatchlist(first.id, i.symbol, i.name); vm.messages.tryEmit("Added to ${first.name}") }
+                        }
+                    }
+                }
+            }
+            if (kind == SearchKind.ALL && (stocks as? UiState.Success)?.data?.isEmpty() == true && (futures as? UiState.Success)?.data?.isEmpty() != false && futures !is UiState.Loading)
+                item { Text("No matches", modifier = Modifier.padding(4.dp)) }
         }
     }
     picking?.let { i -> WatchlistPicker(lists, i.symbol, onDismiss = { picking = null }) { w, add ->
         if (add) { vm.register(i); vm.addToWatchlist(w.id, i.symbol, i.name) } else vm.removeFromWatchlist(w.id, i.symbol)
     } }
+}
+
+/** A futures search result: "RELIANCE [NSE FO] [FUT]" over the expiry, price and day change on the right, then ☆. Tap to add to a watchlist. */
+@Composable
+private fun FutureSearchRow(i: com.papertrade.app.data.market.InstrumentInfo, q: MarketQuote?, starred: Boolean, onAdd: () -> Unit) {
+    val exchange = i.symbol.substringBefore(':').takeIf { it != "DEMO" } ?: if (i.underlying == "SENSEX") "BSE" else "NSE"
+    val ink = MaterialTheme.colorScheme.onSurface
+    Column(Modifier.fillMaxWidth().clickable(onClick = onAdd).testTag("fut_${i.symbol}")) {
+        Row(Modifier.padding(start = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(i.underlying ?: i.symbol.substringAfter(':'), fontSize = 16.sp, lineHeight = 20.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.width(6.dp)); SearchTag("$exchange FO", Color(0xFF4F5866), Color(0xFFEEF1F8))
+                    Spacer(Modifier.width(6.dp)); SearchTag("FUT", Color(0xFFD9534F), Color(0xFFFDECEC))
+                }
+                Text(i.expiry?.format(rowDate)?.uppercase() ?: "", fontSize = 13.sp, lineHeight = 18.sp, color = Color(0xFF4F5866), modifier = Modifier.padding(top = 6.dp))
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(Fmt.rupee(q?.ltp), fontSize = 16.sp, lineHeight = 20.sp, color = Fmt.color(q?.change, ink), maxLines = 1, softWrap = false)
+                Text(q?.change?.let { c -> "${if (c.signum() < 0) "-" else "+"}${Fmt.inr(c.abs())} (${Fmt.pct(q.changePct)})" } ?: "—", fontSize = 13.sp, lineHeight = 18.sp,
+                    color = Color(0xFF4F5866), maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 6.dp))
+            }
+            IconButton(onAdd) { Icon(if (starred) Icons.Default.Star else Icons.Default.StarBorder, if (starred) "In a watchlist" else "Add to watchlist", tint = if (starred) Accent else MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+@Composable
+private fun SearchTag(text: String, fg: Color, bg: Color) = Box(Modifier.height(20.dp).background(bg, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp), contentAlignment = Alignment.Center) {
+    Text(text, fontSize = 11.sp, lineHeight = 14.sp, color = fg)
 }
 
 /**
