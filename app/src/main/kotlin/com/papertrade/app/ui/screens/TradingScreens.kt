@@ -233,12 +233,12 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
 private fun signedRupee(v: BigDecimal) = (if (v.signum() > 0) "+" else "") + Fmt.rupee(v)
 private val posDate = java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy", java.util.Locale.ENGLISH)
 
-/** "NIFTY 29-Sep-26 22450 PE" or "NIFTY 24-Nov-26 FUT", all regular weight; a stock is just its ticker. */
+/** "NIFTY 29-Sep-26 22450 PE", or "RELIANCE 24-Nov-26" for a future (no FUT tag), all regular weight; a stock is just its ticker. */
 private fun posTitle(id: String, info: com.papertrade.app.data.market.InstrumentInfo?) = buildAnnotatedString {
     val e = info?.expiry
     if (e == null) { append(id.substringAfter(':').removeSuffix("-EQ")); return@buildAnnotatedString }
     append(info.underlying ?: id.substringAfter(':'))
-    append(" ${e.format(posDate)} " + (info.optionType?.let { "${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${it.name}" } ?: "FUT"))
+    append(" ${e.format(posDate)}" + (info.optionType?.let { " ${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${it.name}" } ?: ""))
 }
 
 @Composable
