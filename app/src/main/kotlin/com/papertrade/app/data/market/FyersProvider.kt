@@ -260,6 +260,16 @@ class FyersProvider(
         contracts.map { FutureContract(it.toInfo(), q[it.ticker]) }
     }
 
+    override suspend fun searchFutures(query: String) = runCatching {
+        val q = query.trim().uppercase(); if (q.length < 2) return@runCatching emptyList()
+        val today = clock().atZone(MarketHours.IST).toLocalDate()
+        // NSE_FO has NIFTY, BANKNIFTY and the stocks; SENSEX and BANKEX futures are on BSE_FO.
+        (master("NSE_FO") + runCatching { master("BSE_FO") }.getOrDefault(emptyList())).asSequence()
+            .filter { it.opt == null && it.ticker.endsWith("FUT") && it.expiry != null && !it.expiry.isBefore(today) && it.underlying.contains(q, true) }
+            .sortedWith(compareBy({ !it.underlying.equals(q, true) }, { !it.underlying.startsWith(q, true) }, { it.underlying }, { it.expiry }))
+            .take(30).map { it.toInfo() }.toList()
+    }
+
     override suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
         chainFor(underlying.indexSymbol, underlying.displayName, underlying, underlying.masterSegment(), expiry, strikesEachSide)
     }

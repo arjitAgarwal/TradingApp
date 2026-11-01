@@ -134,6 +134,7 @@ class AppVM(private val c: AppContainer) : ViewModel() {
     }
     suspend fun depth(symbol: String) = provider.value.depth(symbol)
     suspend fun search(q: String) = provider.value.searchEquities(q)
+    suspend fun searchFutures(q: String) = provider.value.searchFutures(q)
     suspend fun equityInfo(symbol: String) = provider.value.equityInfo(symbol).onSuccess { c.contracts[symbol] = it }
 }
 
