@@ -387,18 +387,24 @@ private fun WatchRow(label: Pair<String, String>, q: MarketQuote?, onClick: () -
     }
 }
 
-/** "Orders  Positions" as text tabs in the ORDERS section (selected near-black, the other light slate), with search and ⋮ on the right. */
+/**
+ * "Orders  Positions" as text tabs in the ORDERS section on a pale blue-grey band (selected charcoal, the other slate),
+ * with search and ⋮ in round white buttons on the right.
+ */
 @Composable
 private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit, onMenu: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 9.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().background(Color(0xFFEEF1F8)).height(56.dp).padding(start = 9.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         listOf("Orders", "Positions").forEachIndexed { i, t ->
-            Text(t, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Medium,
-                color = if (selected == i) Color(0xFF1A1D24) else Color(0xFF8A93A6),
+            Text(t, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected == i) Color(0xFF252B35) else Color(0xFF4F5866),
                 modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = 7.dp, vertical = 6.dp).testTag("tab_$t"))
         }
         Spacer(Modifier.weight(1f))
-        IconButton(onSearch, Modifier.testTag("orders_search")) { Icon(Icons.Default.Search, "Search", Modifier.size(26.dp), tint = Color(0xFF1F2430)) }
-        IconButton(onMenu, Modifier.testTag("orders_menu")) { Icon(Icons.Default.MoreVert, "More", tint = Color(0xFF1F2430)) }
+        @Composable fun RoundButton(onClick: () -> Unit, tag: String, content: @Composable () -> Unit) =
+            Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White).clickable(onClick = onClick).testTag(tag), contentAlignment = Alignment.Center) { content() }
+        RoundButton(onSearch, "orders_search") { Icon(Icons.Default.Search, "Search", Modifier.size(24.dp), tint = Color(0xFF252B35)) }
+        Spacer(Modifier.width(10.dp))
+        RoundButton(onMenu, "orders_menu") { Icon(Icons.Default.MoreVert, "More", Modifier.size(24.dp), tint = Color(0xFF252B35)) }
     }
 }
 

@@ -233,11 +233,11 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
 private fun signedRupee(v: BigDecimal) = (if (v.signum() > 0) "+" else "") + Fmt.rupee(v)
 private val posDate = java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy", java.util.Locale.ENGLISH)
 
-/** "**NIFTY** 29-Sep-26 22450 PE" or "**NIFTY** 24-Nov-26 FUT"; a stock is just its ticker. */
+/** "NIFTY 29-Sep-26 22450 PE" or "NIFTY 24-Nov-26 FUT", all regular weight; a stock is just its ticker. */
 private fun posTitle(id: String, info: com.papertrade.app.data.market.InstrumentInfo?) = buildAnnotatedString {
     val e = info?.expiry
     if (e == null) { append(id.substringAfter(':').removeSuffix("-EQ")); return@buildAnnotatedString }
-    withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(info.underlying ?: id.substringAfter(':')) }
+    append(info.underlying ?: id.substringAfter(':'))
     append(" ${e.format(posDate)} " + (info.optionType?.let { "${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${it.name}" } ?: "FUT"))
 }
 
@@ -258,19 +258,21 @@ private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertr
     // 100 dp a card: three 20 dp lines, 4 and 8 dp apart.
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (p.isOpen) 1f else 0.5f).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp)
         .testTag("pos_${p.instrumentId}")) {
-        Row(Modifier.height(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(posTitle(p.instrumentId, info), fontSize = 15.sp, lineHeight = 20.sp, color = Color(0xFF1F2430), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        // Title regular in charcoal, P&L medium in the softer card green/red, the second line smaller in grey.
+        val pnlColor = when (pnl.signum()) { 1 -> CardGain; -1 -> CardLoss; else -> CardSub }
+        Row(Modifier.height(22.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(posTitle(p.instrumentId, info), fontSize = 16.sp, lineHeight = 22.sp, color = CardInk, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(8.dp))
-            Text(signedRupee(pnl), fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = Fmt.color(pnl, ink))
+            Text(signedRupee(pnl), fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, color = pnlColor)
         }
         Row(Modifier.padding(top = 4.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
             val n = booked?.first ?: kotlin.math.abs(p.quantity)
-            Text("$n ${if (n == 1) "Lot" else "Lots"}", fontSize = 14.sp, lineHeight = 18.sp, color = ink)
-            Text("  •  ", fontSize = 13.sp, lineHeight = 18.sp, color = ink)
-            if (booked == null) Text("Avg. ${Fmt.rupee(p.avgPrice)}", fontSize = 14.sp, lineHeight = 18.sp, color = ink) else Chip("CF", dim)
+            Text("$n ${if (n == 1) "Lot" else "Lots"}", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub)
+            Text("  •  ", fontSize = 12.sp, lineHeight = 18.sp, color = CardSub)
+            if (booked == null) Text("Avg. ${Fmt.rupee(p.avgPrice)}", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub) else Chip("CF", dim)
             Spacer(Modifier.weight(1f))
-            Text("LTP ${Fmt.rupee(q?.ltp)}  ", fontSize = 14.sp, lineHeight = 18.sp, color = ink)
-            Text("(${Fmt.pct(q?.changePct)})", fontSize = 14.sp, lineHeight = 18.sp, color = Fmt.color(pnl, ink)) // same colour as the P&L above
+            Text("LTP ${Fmt.rupee(q?.ltp)}  ", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub)
+            Text("(${Fmt.pct(q?.changePct)})", fontSize = 13.sp, lineHeight = 18.sp, color = pnlColor) // same colour as the P&L above
         }
         Row(Modifier.padding(top = 8.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
             if (booked == null) {
@@ -291,10 +293,16 @@ private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertr
 }
 
 /** Quantity blue in the position sheet. */
-/** The dark aqua of the Positions toolbar and EXIT AT MARKET. */
-private val ExitBlue = androidx.compose.ui.graphics.Color(0xFF0E6E8C)
+/** The muted indigo of the Positions toolbar and EXIT AT MARKET. */
+private val ExitBlue = androidx.compose.ui.graphics.Color(0xFF4A5BA8)
 
 private val ChipBlue = androidx.compose.ui.graphics.Color(0xFF5367FF)
+
+/** Position card text: charcoal title, grey second line, softer profit green and loss red. */
+private val CardInk = androidx.compose.ui.graphics.Color(0xFF252B35)
+private val CardSub = androidx.compose.ui.graphics.Color(0xFF4F5866)
+private val CardGain = androidx.compose.ui.graphics.Color(0xFF009F82)
+private val CardLoss = androidx.compose.ui.graphics.Color(0xFFB65A5A)
 
 /**
  * Groww's tap-on-position sheet: a summary card (tap the name for contract details; Add SL/TGT), shortcuts to the
