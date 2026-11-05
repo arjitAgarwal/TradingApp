@@ -104,8 +104,6 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     // Search takes over the page below the header until closed (back arrow or system back).
     var searching by rememberSaveable { mutableStateOf(false) }; var query by rememberSaveable { mutableStateOf("") }
     androidx.activity.compose.BackHandler(searching) { searching = false; query = "" }
-    val provider by vm.provider.collectAsState()
-    LaunchedEffect(provider) { vm.loadExpiries() }
     val settings by vm.settings.collectAsState(); val feed by vm.feed.collectAsState()
     val fyersAuth by vm.fyersAuth.collectAsState(); val upstoxAuth by vm.upstoxAuth.collectAsState()
     val upstox = settings.liveSource == LiveSource.UPSTOX
@@ -276,7 +274,7 @@ private fun SearchTag(text: String, fg: Color, bg: Color) = Box(Modifier.height(
  */
 @Composable
 private fun IndexCards(vm: AppVM, onIndex: (Underlying) -> Unit) {
-    val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState(); val expiries by vm.nearestExpiry.collectAsState()
+    val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState(); val expiries by vm.indexExpiries.collectAsState()
     val today = now.atZone(com.papertrade.core.MarketHours.IST).toLocalDate()
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
         Underlying.values().forEachIndexed { i, u ->
@@ -287,7 +285,7 @@ private fun IndexCards(vm: AppVM, onIndex: (Underlying) -> Unit) {
             Column(Modifier.weight(1f).clickable { onIndex(u) }.padding(start = if (i == 0) 8.dp else 12.dp, end = if (i == 0) 12.dp else 6.dp, top = 8.dp, bottom = 6.dp).testTag("ticker_${u.name}")) {
                 Row(Modifier.height(18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(u.name, fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f))
-                    expiries[u]?.let { e -> val soon = !e.isAfter(today.plusDays(1))
+                    expiries[u]?.let { nextIndexExpiry(it, now) }?.let { e -> val soon = !e.isAfter(today.plusDays(1))
                         Box(Modifier.fillMaxHeight().background(if (soon) Gain.copy(alpha = 0.14f) else Accent.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp), contentAlignment = Alignment.Center) {
                             Text(expiryChip(e, today), fontSize = 11.sp, lineHeight = 14.sp, maxLines = 1, softWrap = false)
                         }
@@ -310,6 +308,13 @@ private fun IndexCards(vm: AppVM, onIndex: (Underlying) -> Unit) {
 private fun FitText(text: String, size: androidx.compose.ui.unit.TextUnit, color: Color, min: androidx.compose.ui.unit.TextUnit = 8.sp) {
     var fs by remember(text.length, size) { mutableStateOf(size) } // keyed on length so ticking prices don't re-fit every second
     Text(text, fontSize = fs, lineHeight = fs * 1.25f, color = color, maxLines = 1, softWrap = false, onTextLayout = { if (it.hasVisualOverflow && fs > min) fs *= 0.92f })
+}
+
+/** The next expiry still to come: today's counts only until the 15:30 IST close. Null if the list has none left. */
+internal fun nextIndexExpiry(expiries: List<java.time.LocalDate>, now: java.time.Instant): java.time.LocalDate? {
+    val z = now.atZone(com.papertrade.core.MarketHours.IST)
+    val from = if (z.toLocalTime().isBefore(java.time.LocalTime.of(15, 30))) z.toLocalDate() else z.toLocalDate().plusDays(1)
+    return expiries.filter { !it.isBefore(from) }.minOrNull()
 }
 
 private fun expiryChip(e: java.time.LocalDate, today: java.time.LocalDate) = "Expiry " + when (val d = java.time.temporal.ChronoUnit.DAYS.between(today, e)) {

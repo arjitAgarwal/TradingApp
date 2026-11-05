@@ -19,6 +19,7 @@ class AppContainer(app: Application, providerOverride: ((DataMode, LiveSource) -
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val db = AppDatabase.build(app, dbName)
     val settingsStore = SettingsStore(app)
+    val expiryCache = com.papertrade.app.ui.PrefsExpiryCache(app)
     val fyersAuth = FyersAuth(app)
     val upstoxAuth = UpstoxAuth(app)
     private val demo = DemoProvider()
