@@ -237,7 +237,7 @@ private fun posTitle(id: String, info: com.papertrade.app.data.market.Instrument
 }
 
 @Composable
-private fun Chip(text: String, color: androidx.compose.ui.graphics.Color) = Box(Modifier.height(19.dp).background(color.copy(alpha = 0.14f), RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
+private fun Chip(text: String, color: androidx.compose.ui.graphics.Color, bg: androidx.compose.ui.graphics.Color = color.copy(alpha = 0.14f)) = Box(Modifier.height(19.dp).background(bg, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
     contentAlignment = Alignment.Center) { Text(text, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium, color = color) }
 
 /**
@@ -264,15 +264,15 @@ private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertr
             val n = booked?.first ?: kotlin.math.abs(p.quantity)
             Text("$n ${if (n == 1) "Lot" else "Lots"}", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub)
             Text("  •  ", fontSize = 12.sp, lineHeight = 18.sp, color = CardSub)
-            if (booked == null) Text("Avg. ${Fmt.rupee(p.avgPrice)}", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub) else Chip("CF", dim)
+            if (booked == null) Text("Avg. ${Fmt.rupee(p.avgPrice)}", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub) else Chip("CF", CardInk, CfBg)
             Spacer(Modifier.weight(1f))
             Text("LTP ${Fmt.rupee(q?.ltp)}  ", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub)
             Text("(${Fmt.pct(q?.changePct)})", fontSize = 13.sp, lineHeight = 18.sp, color = when (q?.changePct?.signum()) { 1 -> CardGain; -1 -> CardLoss; else -> CardSub }) // the day's move, not the P&L
         }
         Row(Modifier.padding(top = 8.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
             if (booked == null) {
-                Chip(if (p.quantity > 0) "BUY" else "SELL", if (p.quantity > 0) Gain else Loss); Spacer(Modifier.width(6.dp)); Chip("CF", dim)
-                Text("  (1 Lot = ${info?.lotSize ?: "—"})", fontSize = 12.sp, lineHeight = 16.sp, color = ink, maxLines = 1, modifier = Modifier.weight(1f))
+                if (p.quantity > 0) Chip("BUY", BuyInk, BuyBg) else Chip("SELL", Loss); Spacer(Modifier.width(6.dp)); Chip("CF", CardInk, CfBg)
+                Text("  (1 Lot = ${info?.lotSize ?: "—"})", fontSize = 12.sp, lineHeight = 16.sp, color = CardInk, maxLines = 1, modifier = Modifier.weight(1f))
                 // Closes the whole position at market straight away (paper money, so no confirmation step).
                 Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onExit).padding(horizontal = 2.dp, vertical = 2.dp).testTag("one_tap_exit_${p.instrumentId}"),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -288,11 +288,14 @@ private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertr
 }
 
 /** The muted indigo of the Positions toolbar and EXIT AT MARKET. */
-private val ExitBlue = androidx.compose.ui.graphics.Color(0xFF4A5BA8)
+private val ExitBlue = androidx.compose.ui.graphics.Color(0xFF3754B3)
 
 /** Position card text: charcoal title, grey second line, softer profit green and loss red. */
-private val CardInk = androidx.compose.ui.graphics.Color(0xFF252B35)
-private val CardSub = androidx.compose.ui.graphics.Color(0xFF4F5866)
+private val CardInk = androidx.compose.ui.graphics.Color(0xFF0F1519)
+private val CardSub = androidx.compose.ui.graphics.Color(0xFF3E4954)
+private val BuyInk = androidx.compose.ui.graphics.Color(0xFF297B67)
+private val BuyBg = androidx.compose.ui.graphics.Color(0xFFDCF0E8)
+private val CfBg = androidx.compose.ui.graphics.Color(0xFFF0F4F8)
 private val CardGain = androidx.compose.ui.graphics.Color(0xFF138971)
 private val CardLoss = androidx.compose.ui.graphics.Color(0xFFAD5C58)
 
