@@ -25,7 +25,7 @@ fun Throwable.toUi(): UiState.Error {
 }
 
 /** Activity-scoped: wallet, orders, positions, quotes, settings. Screens read these; none of them talk to a broker. */
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 class AppVM(private val c: AppContainer) : ViewModel() {
     val settings = c.settingsStore.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
     val quotes: StateFlow<Map<String, MarketQuote>> = c.hub.latest
@@ -115,19 +115,16 @@ class AppVM(private val c: AppContainer) : ViewModel() {
             }
         }
     }
-    /** Nearest option expiry per index, for the "Expiry Tue" chips. One option-chain read per index per provider. */
-    val nearestExpiry = MutableStateFlow<Map<Underlying, LocalDate>>(emptyMap())
-    private var expiryProvider: String? = null
-    fun loadExpiries() {
-        if (expiryProvider == provider.value.id) return
-        expiryProvider = provider.value.id; nearestExpiry.value = emptyMap()
-        val today = LocalDate.now(MarketHours.IST)
-        viewModelScope.launch {
-            Underlying.values().forEach { u -> provider.value.optionChain(u, null, 1).onSuccess { ch ->
-                ch.expiries.filter { !it.isBefore(today) }.minOrNull()?.let { e -> nearestExpiry.update { it + (u to e) } }
-            } }
-        }
-    }
+    // The hub starts on the demo default until settings load; waiting for it to match them keeps demo dates off a live screen.
+    private val expiryLoader = IndexExpiries(
+        provider = combine(c.hub.provider, c.settingsStore.settings) { p, s -> p.takeIf { (s.dataMode == DataMode.DEMO) == (p is DemoProvider) } }.filterNotNull().distinctUntilChanged(),
+        day = now.map { it.atZone(MarketHours.IST).toLocalDate() }.distinctUntilChanged(),
+        login = combine(fyersAuth, upstoxAuth) { f, u -> f to u },
+        active = c.hub.foreground.debounce { if (it) 0L else 10_000L }.distinctUntilChanged(), // same grace period as polling
+        cache = c.expiryCache, log = { android.util.Log.w("IndexExpiries", it) })
+    /** Option expiries per index, for the "Expiry Tue" chips. */
+    val indexExpiries = expiryLoader.dates
+    init { viewModelScope.launch { expiryLoader.run() } }
     /** One chain read for the WATCHLIST "Options" tab; its contracts become tradable and their quotes seed the hub. */
     suspend fun optionChain(u: Underlying, expiry: LocalDate?, strikesEachSide: Int = 10) = provider.value.optionChain(u, expiry, strikesEachSide).onSuccess { ch ->
         ch.rows.forEach { r -> listOfNotNull(r.call, r.put).forEach { s -> s.info?.let { c.contracts[s.symbol] = it }; c.hub.seed(s.quote) } }

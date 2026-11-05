@@ -274,6 +274,14 @@ class FyersProvider(
         chainFor(underlying.indexSymbol, underlying.displayName, underlying, underlying.masterSegment(), expiry, strikesEachSide)
     }
 
+    /** The chain response lists the dates, so this skips the symbol master (a slow download on the first open of the day). */
+    override suspend fun optionExpiries(underlying: Underlying) = runCatching {
+        val data = getJson("$dataBase/options-chain-v3?symbol=${enc(underlying.indexSymbol)}&strikecount=1")["data"] as? JsonObject
+            ?: throw ProviderException("Option chain not available for ${underlying.displayName}", ProviderException.Kind.UNSUPPORTED)
+        rememberEpochs(underlying.indexSymbol, data)
+        (data["expiryData"] as? JsonArray).orEmpty().mapNotNull { runCatching { LocalDate.parse(it.jsonObject["date"].str(), dateFmt) }.getOrNull() }
+    }
+
     override suspend fun stockOptionChain(symbol: String, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
         val root = symbol.substringAfter(':').removeSuffix("-EQ")
         // Most stocks aren't in F&O: answer that from the symbol master instead of spending a request.

@@ -133,7 +133,7 @@ private enum class PosFilter(val label: String) { ALL("All positions"), OPEN("Op
 /**
  * Today's positions: a toolbar (filter, search, Secure Exit, Exit all), one card per F&O position with One Tap Exit,
  * closed positions greyed below with today's buy and sell averages, and a Total bar pinned to the bottom (tap it for
- * realised/unrealised). Tapping a card opens the position sheet.
+ * realised/unrealised). Tapping a card opens the same quote sheet as a watchlist row.
  */
 @Composable
 fun PositionsScreen(vm: AppVM, nav: Nav) {
@@ -154,7 +154,6 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
     // so re-entering a contract closed yesterday doesn't bring back yesterday's profit.
     val earlier = acc?.fills?.filter { it.time.atZone(MarketHours.IST).toLocalDate().isBefore(today) }?.groupBy { it.instrumentId }
         ?.mapValues { (_, f) -> f.fold(BigDecimal.ZERO) { s, x -> s + x.realizedGross } to f.fold(BigDecimal.ZERO) { s, x -> s + x.charges } } ?: emptyMap()
-    fun todayOf(p: Position) = earlier[p.instrumentId]?.let { (g, c) -> p.copy(realizedGross = p.realizedGross - g, charges = p.charges - c) } ?: p
     val pnl = all.associate { p -> p.instrumentId to ((val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.netPnl ?: p.realizedNet)
         - (earlier[p.instrumentId]?.let { (g, c) -> g - c } ?: BigDecimal.ZERO)) }
     // Today's fills per contract: lots traded and the average buy and sell prices on the closed cards.
@@ -213,16 +212,12 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
             }
         }
     }
-    sel?.let { p0 -> val p = todayOf(acc?.positions?.get(p0.instrumentId) ?: p0)
-        val u = vm.info(p.instrumentId)?.underlying?.let { n -> com.papertrade.app.data.market.Underlying.values().firstOrNull { it.name == n } }
-        PositionSheet(vm, p, pnl[p.instrumentId] ?: BigDecimal.ZERO, quotes[p.instrumentId]?.ltp, val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId },
-            underlying = u?.displayName, onClose = { sel = null },
-            onOpen = { sel = null; nav.contract(p.instrumentId) },
-            onChart = u?.let { { sel = null; nav.index(it) } },
-            // An index option opens its index chain; a stock option opens that stock's chain (stock F&O is all on NSE).
-            onChain = u?.let { { sel = null; nav.chain(it) } } ?: vm.info(p.instrumentId)?.underlying?.let { n -> { sel = null; nav.stockChain("NSE:$n-EQ") } },
-            onExit = { sel = null; vm.closePosition(p) },
-            onBuy = { sel = null; nav.order(p.instrumentId, Side.BUY) })
+    sel?.let { p -> val sym = p.instrumentId; val lists by vm.watchlists.collectAsState(); val holder = lists.firstOrNull { w -> w.items.any { it.symbol == sym } }
+        DisposableEffect(sym) { vm.subscribe("position_sheet", setOf(sym)); onDispose { vm.unsubscribe("position_sheet") } } // a closed position isn't otherwise streamed
+        QuickActionSheet(vm, nav, sym, quotes[sym], inList = holder != null, onClose = { sel = null },
+            onOpen = { sel = null; if (sym.endsWith("-EQ")) nav.stock(sym) else nav.contract(sym) },
+            onTrade = { side -> sel = null; nav.order(sym, side) },
+            onStar = { if (holder != null) vm.removeFromWatchlist(holder.id, sym) else lists.firstOrNull()?.let { w -> vm.info(sym)?.let(vm::register); vm.addToWatchlist(w.id, sym, vm.info(sym)?.name ?: sym) } })
     }
     if (confirmExitAll) AlertDialog(onDismissRequest = { confirmExitAll = false }, title = { Text("Exit all positions?") },
         text = { Text("${open.size} open ${if (open.size == 1) "position" else "positions"} will be closed at market price.") },
@@ -292,89 +287,14 @@ private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertr
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
-/** Quantity blue in the position sheet. */
 /** The muted indigo of the Positions toolbar and EXIT AT MARKET. */
 private val ExitBlue = androidx.compose.ui.graphics.Color(0xFF4A5BA8)
-
-private val ChipBlue = androidx.compose.ui.graphics.Color(0xFF5367FF)
 
 /** Position card text: charcoal title, grey second line, softer profit green and loss red. */
 private val CardInk = androidx.compose.ui.graphics.Color(0xFF252B35)
 private val CardSub = androidx.compose.ui.graphics.Color(0xFF4F5866)
-private val CardGain = androidx.compose.ui.graphics.Color(0xFF009F82)
-private val CardLoss = androidx.compose.ui.graphics.Color(0xFFB65A5A)
-
-/**
- * Groww's tap-on-position sheet: a summary card (tap the name for contract details; Add SL/TGT), shortcuts to the
- * underlying's chart and option chain, expandable position details, then Buy (order page) and Exit (close at market).
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PositionSheet(vm: AppVM, p: Position, pnl: BigDecimal, ltp: BigDecimal?, v: PositionValuation?, underlying: String?,
-                          onClose: () -> Unit, onOpen: () -> Unit, onChart: (() -> Unit)?, onChain: (() -> Unit)?, onExit: () -> Unit, onBuy: () -> Unit) {
-    val info = vm.info(p.instrumentId); val units = p.quantity * (info?.lotSize ?: 1)
-    val dim = MaterialTheme.colorScheme.onSurfaceVariant
-    var details by remember { mutableStateOf(false) }
-    // Open fully: half-open would hide Buy/Exit below the screen edge.
-    ModalBottomSheet(onDismissRequest = onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp).padding(bottom = 16.dp).testTag("position_sheet")) {
-            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row { Text("Delivery", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f))
-                        Text(if (p.isOpen) (if (units > 0) "+ " else "- ") + kotlin.math.abs(units) else "Closed", fontSize = 13.sp, color = if (p.isOpen) ChipBlue else dim) }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Row(Modifier.weight(1f).clickable(onClick = onOpen), verticalAlignment = Alignment.CenterVertically) {
-                            Text(Fmt.label(p.instrumentId, info), fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Contract details", Modifier.size(20.dp))
-                        }
-                        Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
-                    }
-                    Row { Text("Avg ${Fmt.rupee(p.avgPrice)}", fontSize = 13.sp, color = dim, modifier = Modifier.weight(1f)); Text("Mkt ${Fmt.rupee(ltp)}", fontSize = 13.sp, color = dim) }
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Text("Add SL/TGT", fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(16.dp)
-                    .dashedUnderline(MaterialTheme.colorScheme.onSurface).clickable { vm.messages.tryEmit("Stoploss/target is coming next") })
-            }
-            Spacer(Modifier.height(8.dp))
-            SheetLink(Icons.Default.CandlestickChart, "${underlying ?: "Index"} Chart", onChart)
-            SheetLink(Icons.Default.Link, "Option Chain", onChain) {
-                OutlinedButton({ vm.messages.tryEmit("Adjust position is coming soon") }, shape = RoundedCornerShape(10.dp), contentPadding = PaddingValues(horizontal = 14.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) {
-                    Icon(Icons.Default.SwapHoriz, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Adjust position", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                }
-            }
-            SheetLink(Icons.AutoMirrored.Filled.List, "Position details", { details = !details })
-            if (details) Column(Modifier.padding(start = 56.dp, bottom = 8.dp)) {
-                StatRow("Quantity", "$units (${kotlin.math.abs(p.quantity)} ${if (kotlin.math.abs(p.quantity) == 1) "lot" else "lots"})")
-                StatRow("Realised P&L", Fmt.signed(p.realizedGross))
-                StatRow("Unrealised P&L", Fmt.signed(v?.unrealized))
-                StatRow("Charges", Fmt.rupee(p.charges))
-            }
-            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button(onBuy, Modifier.weight(1f).height(52.dp).testTag("pos_buy"), enabled = info != null, shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Gain, contentColor = androidx.compose.ui.graphics.Color.White)) { Text("Buy", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
-                Button(onExit, Modifier.weight(1f).height(52.dp).testTag("pos_exit"), enabled = p.isOpen, shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Loss, contentColor = androidx.compose.ui.graphics.Color.White)) { Text("Exit", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
-            }
-        }
-    }
-}
-
-/** A sheet shortcut row: icon, label, optional trailing control, hairline under the label. Greyed when [onClick] is null. */
-@Composable
-private fun SheetLink(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: (() -> Unit)?, trailing: @Composable () -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = onClick != null) { onClick?.invoke() }, verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.padding(horizontal = 4.dp).size(24.dp))
-        Spacer(Modifier.width(28.dp))
-        Column(Modifier.weight(1f)) {
-            Row(Modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(label, fontSize = 15.sp, color = if (onClick != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                trailing()
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        }
-    }
-}
+private val CardGain = androidx.compose.ui.graphics.Color(0xFF138971)
+private val CardLoss = androidx.compose.ui.graphics.Color(0xFFAD5C58)
 
 @Composable
 fun HoldingsScreen(vm: AppVM, nav: Nav) {
