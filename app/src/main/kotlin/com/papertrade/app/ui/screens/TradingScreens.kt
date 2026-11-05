@@ -267,7 +267,7 @@ private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertr
             if (booked == null) Text("Avg. ${Fmt.rupee(p.avgPrice)}", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub) else Chip("CF", dim)
             Spacer(Modifier.weight(1f))
             Text("LTP ${Fmt.rupee(q?.ltp)}  ", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub)
-            Text("(${Fmt.pct(q?.changePct)})", fontSize = 13.sp, lineHeight = 18.sp, color = pnlColor) // same colour as the P&L above
+            Text("(${Fmt.pct(q?.changePct)})", fontSize = 13.sp, lineHeight = 18.sp, color = when (q?.changePct?.signum()) { 1 -> CardGain; -1 -> CardLoss; else -> CardSub }) // the day's move, not the P&L
         }
         Row(Modifier.padding(top = 8.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
             if (booked == null) {
