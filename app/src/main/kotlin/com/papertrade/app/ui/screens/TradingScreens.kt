@@ -204,11 +204,11 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
         Column(Modifier.fillMaxWidth().background(Fmt.color(total, dim).copy(alpha = 0.14f)).clickable { breakdown = !breakdown }.padding(horizontal = 16.dp).testTag("positions_total_bar")) {
             if (breakdown) { Spacer(Modifier.height(8.dp)); StatRow("Realised today", Fmt.signed(total - unrealised)); StatRow("Unrealised", Fmt.signed(unrealised)) }
             Row(Modifier.height(40.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.CheckCircle, null, Modifier.size(18.dp), tint = Gain); Spacer(Modifier.width(8.dp))
-                Text("Total", fontSize = 15.sp, lineHeight = 20.sp, modifier = Modifier.weight(1f))
-                Text(signedRupee(total), fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = Fmt.color(total, MaterialTheme.colorScheme.onSurface), modifier = Modifier.testTag("positions_total"))
+                Icon(Icons.Filled.CheckCircle, null, Modifier.size(18.dp), tint = TotalCheck); Spacer(Modifier.width(8.dp))
+                Text("Total", fontSize = 15.sp, lineHeight = 20.sp, color = CardInk, modifier = Modifier.weight(1f))
+                Text(signedRupee(total), fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = CardInk, modifier = Modifier.testTag("positions_total")) // the bar's tint shows profit or loss
                 Spacer(Modifier.width(6.dp))
-                Icon(if (breakdown) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, if (breakdown) "Hide breakdown" else "Show breakdown", Modifier.size(20.dp))
+                Icon(if (breakdown) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, if (breakdown) "Hide breakdown" else "Show breakdown", Modifier.size(20.dp), tint = CardInk)
             }
         }
     }
@@ -298,6 +298,7 @@ private val BuyBg = androidx.compose.ui.graphics.Color(0xFFDCF0E8)
 private val CfBg = androidx.compose.ui.graphics.Color(0xFFF0F4F8)
 private val CardGain = androidx.compose.ui.graphics.Color(0xFF138971)
 private val CardLoss = androidx.compose.ui.graphics.Color(0xFFAD5C58)
+private val TotalCheck = androidx.compose.ui.graphics.Color(0xFF007E62)
 
 @Composable
 fun HoldingsScreen(vm: AppVM, nav: Nav) {
