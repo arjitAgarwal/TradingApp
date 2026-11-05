@@ -488,13 +488,13 @@ private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> U
 }
 
 /**
- * Quote sheet shown on tapping a watchlist row or an Options-tab strike: "Swipe up for Stock Details" above it, then the
+ * Quote sheet shown on tapping a watchlist row, an Options-tab strike or a position: "Swipe up for Stock Details" above it, then the
  * name and price, a card with Open/High/Low/Prev. Close over the five-level market depth, ☆ / Option Chain / Charts,
  * and BUY / SELL. Swiping up (or tapping the hint) opens the full details page; [inList] fills the star.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QuickActionSheet(vm: AppVM, nav: Nav, symbol: String, q: MarketQuote?, inList: Boolean, onClose: () -> Unit, onOpen: () -> Unit,
+internal fun QuickActionSheet(vm: AppVM, nav: Nav, symbol: String, q: MarketQuote?, inList: Boolean, onClose: () -> Unit, onOpen: () -> Unit,
                              onTrade: (Side) -> Unit, onStar: () -> Unit) {
     var info by remember(symbol) { mutableStateOf(vm.info(symbol)) }
     LaunchedEffect(symbol) { if (info == null && symbol.endsWith("-EQ")) vm.equityInfo(symbol).onSuccess { info = it; vm.register(it) } }
