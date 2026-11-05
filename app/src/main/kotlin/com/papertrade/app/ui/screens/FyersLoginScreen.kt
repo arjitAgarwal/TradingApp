@@ -3,6 +3,7 @@ package com.papertrade.app.ui.screens
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
+import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -57,19 +58,63 @@ fun FyersLoginScreen(vm: AppVM, nav: Nav) {
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
                     Button({ error = null; step = 1 }, enabled = pin.length == 4, modifier = Modifier.fillMaxWidth()) { Text("Continue to FYERS login") }
                 }
-                1 -> AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx ->
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true; settings.domStorageEnabled = true
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = handleRedirect(request.url.toString())
-                            // Some redirects skip shouldOverrideUrlLoading; catch them here too and stop the load.
-                            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) { if (handleRedirect(url)) view.stopLoading() else super.onPageStarted(view, url, favicon) }
-                        }
-                        vm.fyersLoginUrl()?.let(::loadUrl)
-                    }
-                })
+                1 -> LoginWebView(vm.fyersLoginUrl(), ::handleRedirect)
                 else -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(); Text("Finishing login…") }
             }
         }
     }
 }
+
+/**
+ * Upstox login inside the app: Upstox' own login page in a WebView; the redirect carries a one-time `code` that is swapped
+ * for today's token. Upstox has no refresh token, so this is needed once a day (the login ends at 3:30 AM).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UpstoxLoginScreen(vm: AppVM, nav: Nav) {
+    var step by remember { mutableStateOf(if (vm.upstoxSetUp()) 1 else -1) } // -1 not set up, 0 error, 1 web login, 2 finishing
+    var error by remember { mutableStateOf<String?>(null) }
+    val redirect = remember { vm.upstoxRedirectUri() }
+
+    fun handleRedirect(url: String): Boolean {
+        if (redirect == null || !url.startsWith(redirect) || step != 1) return false
+        val uri = Uri.parse(url)
+        val code = uri.getQueryParameter("code")
+        if (code.isNullOrBlank()) { error = "Upstox did not complete the login (${uri.getQueryParameter("error") ?: "no code"}). Please try again."; step = 0; return true }
+        step = 2
+        vm.completeUpstoxLogin(code) { r -> if (r.isSuccess) nav.back() else { error = r.exceptionOrNull()?.message ?: "Login failed"; step = 0 } }
+        return true
+    }
+
+    Scaffold(topBar = { TopAppBar(title = { Text("Log in to Upstox") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
+        Box(Modifier.padding(pad).fillMaxSize()) {
+            when (step) {
+                -1 -> Text("Upstox isn't set up on this phone yet. Fill in the Upstox app details in Account → Market data.", Modifier.padding(16.dp))
+                0 -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                    Button({ error = null; step = 1 }, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
+                }
+                1 -> LoginWebView(vm.upstoxLoginUrl(), ::handleRedirect)
+                else -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(); Text("Finishing login…") }
+            }
+        }
+    }
+}
+
+/** A broker's login page; [onUrl] returns true for the redirect back to us, which is then never loaded. */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun LoginWebView(url: String?, onUrl: (String) -> Boolean) = AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx ->
+    WebView(ctx).apply {
+        // AndroidView defaults to WRAP_CONTENT, and a wrap-content WebView resolves CSS height units (vh, %, dvh) to 0.
+        // Upstox' login page sizes itself with them, so without this it collapses: blank page, no logo/button, broken typing.
+        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        settings.javaScriptEnabled = true; settings.domStorageEnabled = true
+        webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = onUrl(request.url.toString())
+            // Some redirects skip shouldOverrideUrlLoading; catch them here too and stop the load.
+            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) { if (onUrl(url)) view.stopLoading() else super.onPageStarted(view, url, favicon) }
+        }
+        url?.let(::loadUrl)
+    }
+})

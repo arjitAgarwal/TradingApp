@@ -33,7 +33,8 @@ fun QuoteHeader(q: MarketQuote?, vm: AppVM) {
         Text(Fmt.inr(q?.ltp), fontSize = 30.sp, fontWeight = FontWeight.Bold)
         Text("${Fmt.signed(q?.change)}  (${Fmt.pct(q?.changePct)})", color = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface))
         FreshnessChip(freshnessOf(q, now, vm.maxAgeSec()), q?.let { Fmt.time(it.timestamp) })
-        if (q?.source == com.papertrade.core.QuoteSource.CACHED) Text("Previous / cached quote — not a live price. Market orders are disabled.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+        if (q?.source == com.papertrade.core.QuoteSource.CACHED) Text(if (vm.settings.collectAsState().value.testClosedMarket) "Previous / cached quote — not a live price. Test mode is on: orders fill at this price."
+            else "Previous / cached quote — not a live price. Market orders are disabled.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
     }
 }
 
@@ -71,7 +72,7 @@ fun IndexScreen(c: AppContainer, vm: AppVM, u: Underlying, nav: Nav) {
 @Composable
 fun StockScreen(c: AppContainer, vm: AppVM, symbol: String, nav: Nav) {
     val q = vm.quotes.collectAsState().value[symbol]; val lists by vm.watchlists.collectAsState()
-    var info by remember { mutableStateOf(vm.info(symbol)) }; var err by remember { mutableStateOf<String?>(null) }; var ticket by remember { mutableStateOf<Side?>(null) }
+    var info by remember { mutableStateOf(vm.info(symbol)) }; var err by remember { mutableStateOf<String?>(null) }
     DisposableEffect(symbol) { vm.subscribe("stock", setOf(symbol)); onDispose { vm.unsubscribe("stock") } }
     LaunchedEffect(symbol) { if (info == null) vm.equityInfo(symbol).fold({ info = it; vm.register(it) }, { err = it.message }) }
     DetailScaffold(symbol.substringAfter(':').removeSuffix("-EQ"), nav) {
@@ -81,29 +82,44 @@ fun StockScreen(c: AppContainer, vm: AppVM, symbol: String, nav: Nav) {
         err?.let { Text("Instrument metadata unavailable: $it", color = MaterialTheme.colorScheme.error) }
         val inList = lists.firstOrNull()?.items?.any { it.symbol == symbol } == true
         lists.firstOrNull()?.let { w -> info?.let { i -> OutlinedButton({ if (inList) vm.removeFromWatchlist(w.id, symbol) else vm.addToWatchlist(w.id, symbol, i.name) }) { Text(if (inList) "Remove from ${w.name}" else "Add to ${w.name}") } } }
+        // The chain screen says so if this stock has no options (most aren't in F&O).
+        OutlinedButton({ nav.stockChain(symbol) }, Modifier.fillMaxWidth().testTag("btn_stock_chain")) { Text("Option chain") }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button({ ticket = Side.BUY }, Modifier.weight(1f).testTag("btn_buy"), enabled = info != null) { Text("Buy") }
-            OutlinedButton({ ticket = Side.SELL }, Modifier.weight(1f).testTag("btn_sell"), enabled = info != null) { Text("Sell") }
+            Button({ nav.order(symbol, Side.BUY) }, Modifier.weight(1f).testTag("btn_buy"), enabled = info != null) { Text("Buy") }
+            OutlinedButton({ nav.order(symbol, Side.SELL) }, Modifier.weight(1f).testTag("btn_sell"), enabled = info != null) { Text("Sell") }
         }
     }
-    ticket?.let { s -> info?.let { OrderTicket(it, q, vm, s) { ticket = null } } }
 }
 
+/** Option chain of [key]: an index name ("NIFTY") or a stock symbol ("NSE:RELIANCE-EQ"). */
 @Composable
-fun ChainScreen(c: AppContainer, vm: AppVM, u: Underlying, nav: Nav) {
-    val cv = scoped(c, "chain", u.name, ChainVM::class.java); val ui by cv.ui.collectAsState(); val now by vm.now.collectAsState()
-    ChainBody(vm, u, cv, ui, nav, now)
+fun ChainScreen(c: AppContainer, vm: AppVM, key: String, nav: Nav) {
+    val cv = scoped(c, "chain", key, ChainVM::class.java); val ui by cv.ui.collectAsState(); val now by vm.now.collectAsState()
+    val name = Underlying.values().firstOrNull { it.name == key }?.displayName ?: key.substringAfter(':').removeSuffix("-EQ")
+    ChainBody(vm, name, cv, ui, nav, now)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: Nav, now: java.time.Instant) {
+private fun ChainBody(vm: AppVM, name: String, cv: ChainVM, ui: ChainUi, nav: Nav, now: java.time.Instant) {
     val chain = ui.chain
-    Scaffold(topBar = { TopAppBar(title = { Text("${u.displayName} option chain") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
+    val lists by vm.watchlists.collectAsState(); val first = lists.firstOrNull()
+    val snack = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
+    // Tapping a strike only adds it to the first watchlist; buying/selling happens from there.
+    val add: (OptionSide) -> Unit = { s ->
+        when {
+            first == null -> vm.messages.tryEmit("Create a watchlist first")
+            first.items.any { it.symbol == s.symbol } -> vm.messages.tryEmit("Already in ${first.name}")
+            else -> { s.info?.let(vm::register); vm.addToWatchlist(first.id, s.symbol, s.info?.name ?: s.symbol); vm.messages.tryEmit("Added to ${first.name}") }
+        }
+    }
+    val inList = first?.items?.map { it.symbol }?.toSet().orEmpty()
+    Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = { TopAppBar(title = { Text("$name option chain") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
         Column(Modifier.padding(pad)) {
             if (chain == null) { if (ui.error != null) CenterMessage(if (ui.offline) "You're offline" else "Option chain unavailable", ui.error, cv::start) else Loading(); return@Column }
             Column(Modifier.padding(horizontal = 12.dp)) {
-                Text("${u.displayName}  ${Fmt.inr(chain.underlyingLtp)}", fontWeight = FontWeight.Bold)
+                Text("$name  ${Fmt.inr(chain.underlyingLtp)}", fontWeight = FontWeight.Bold)
                 val f = if (chain.source == com.papertrade.core.QuoteSource.LIVE) freshnessOf(chain.rows.firstNotNullOfOrNull { it.call?.quote ?: it.put?.quote }, now, vm.maxAgeSec()) else when (chain.source) {
                     com.papertrade.core.QuoteSource.DEMO -> Freshness.DEMO; else -> Freshness.CACHED }
                 FreshnessChip(f, Fmt.time(chain.asOf))
@@ -120,10 +136,10 @@ private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: N
             LazyColumn(Modifier.testTag("chain_table")) {
                 items(chain.rows, key = { it.strike.toPlainString() }) { r ->
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Cell(r.call, Modifier.weight(1f), nav, Alignment.Start)
+                        Cell(r.call, Modifier.weight(1f), r.call?.symbol in inList, Alignment.Start, add)
                         Text(Fmt.inr(r.strike, 0), Modifier.width(80.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontWeight = if (r.strike == atm) FontWeight.ExtraBold else FontWeight.Medium,
                             color = if (r.strike == atm) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                        Cell(r.put, Modifier.weight(1f), nav, Alignment.End)
+                        Cell(r.put, Modifier.weight(1f), r.put?.symbol in inList, Alignment.End, add)
                     }
                     HorizontalDivider()
                 }
@@ -133,9 +149,9 @@ private fun ChainBody(vm: AppVM, u: Underlying, cv: ChainVM, ui: ChainUi, nav: N
 }
 
 @Composable
-private fun Cell(s: OptionSide?, m: Modifier, nav: Nav, align: Alignment.Horizontal) {
-    Column(m.clickable(enabled = s != null) { s?.let { nav.contract(it.symbol) } }.padding(vertical = 6.dp), horizontalAlignment = align) {
-        Text(Fmt.inr(s?.quote?.ltp), fontWeight = FontWeight.SemiBold)
+private fun Cell(s: OptionSide?, m: Modifier, added: Boolean, align: Alignment.Horizontal, onAdd: (OptionSide) -> Unit) {
+    Column(m.clickable(enabled = s != null) { s?.let(onAdd) }.then(s?.let { Modifier.testTag("chain_cell_${it.symbol}") } ?: Modifier).padding(vertical = 6.dp), horizontalAlignment = align) {
+        Text((if (added) "★ " else "") + Fmt.inr(s?.quote?.ltp), fontWeight = FontWeight.SemiBold)
         Text(Fmt.pct(s?.quote?.changePct), fontSize = 11.sp, color = Fmt.color(s?.quote?.changePct, MaterialTheme.colorScheme.onSurface))
     }
 }
@@ -157,7 +173,7 @@ fun FuturesScreen(c: AppContainer, vm: AppVM, u: Underlying, nav: Nav) {
 
 @Composable
 fun ContractScreen(vm: AppVM, symbol: String, nav: Nav) {
-    val info = vm.info(symbol); val q = vm.quotes.collectAsState().value[symbol]; var ticket by remember { mutableStateOf<Side?>(null) }
+    val info = vm.info(symbol); val q = vm.quotes.collectAsState().value[symbol]
     DisposableEffect(symbol) { vm.subscribe("contract", setOf(symbol)); onDispose { vm.unsubscribe("contract") } }
     DetailScaffold(info?.let { "${it.underlying ?: ""} ${it.strike?.let { s -> Fmt.inr(s, 0) } ?: "FUT"} ${it.optionType ?: ""}" } ?: symbol, nav) {
         if (info == null) { Text("Contract metadata (lot size, tick size) is unavailable from the provider, so this contract can't be traded in the simulation.", color = MaterialTheme.colorScheme.error); return@DetailScaffold }
@@ -169,9 +185,8 @@ fun ContractScreen(vm: AppVM, symbol: String, nav: Nav) {
             StatRow("Implied volatility", q?.impliedVol?.let { Fmt.inr(it) + "%" } ?: "—")
         } }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button({ ticket = Side.BUY }, Modifier.weight(1f).testTag("btn_buy")) { Text("Buy") }
-            OutlinedButton({ ticket = Side.SELL }, Modifier.weight(1f).testTag("btn_sell")) { Text("Sell") }
+            Button({ nav.order(symbol, Side.BUY) }, Modifier.weight(1f).testTag("btn_buy")) { Text("Buy") }
+            OutlinedButton({ nav.order(symbol, Side.SELL) }, Modifier.weight(1f).testTag("btn_sell")) { Text("Sell") }
         }
     }
-    ticket?.let { s -> info?.let { OrderTicket(it, q, vm, s) { ticket = null } } }
 }

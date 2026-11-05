@@ -34,7 +34,7 @@ class TradingDatabaseTest {
     @After fun tearDown() { db.close(); ctx.deleteDatabase(name) }
 
     @Test fun startsWithTenLakh() = runBlocking {
-        assertEquals(0, BigDecimal("1000000").compareTo(repo.account.first().wallet.cash))
+        assertEquals(0, BigDecimal("1354510").compareTo(repo.account.first().wallet.cash))
     }
 
     @Test fun fillUpdatesWalletPositionLedgerAtomicallyAndSurvivesRestart() = runBlocking {

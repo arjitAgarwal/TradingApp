@@ -38,6 +38,7 @@ data class EngineResult(
  *  - LIMIT BUY fills when reference <= limit, SELL when reference >= limit, at the reference (price improvement/gap fills at market, never worse than limit).
  *  - A quote is evaluated at most once per order (by timestamp); an unchanged or older quote never fills anything, so a screen refresh cannot fill an order.
  *  - Stale/cached quotes never fill. Orders stay OPEN across market close; the caller decides whether to expire them.
+ *  - Exception: with ExecutionConfig.allowClosedMarketFills (an opt-in test mode), cached and old quotes fill like live ones.
  *  - Partial fills: if maxQtyPerFill is set each evaluation fills at most that quantity.
  */
 class PaperExchange(
@@ -94,8 +95,9 @@ class PaperExchange(
     }
 
     fun staleReason(q: Quote, now: Instant): String? = when {
-        q.source == QuoteSource.CACHED -> "quote is cached"
         q.ltp.signum() <= 0 -> "invalid price"
+        config.allowClosedMarketFills -> null // test mode: the last price is good enough
+        q.source == QuoteSource.CACHED -> "quote is cached"
         java.time.Duration.between(q.timestamp, now) > config.maxQuoteAge -> "quote is stale (older than ${config.maxQuoteAge.seconds}s)"
         else -> null
     }

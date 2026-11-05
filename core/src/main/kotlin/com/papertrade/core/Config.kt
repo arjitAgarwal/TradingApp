@@ -41,6 +41,11 @@ data class MarginModel(
 
 data class ExecutionConfig(
     val maxQuoteAge: Duration = Duration.ofSeconds(15),
+    /**
+     * Test mode for trying the app while the market is shut: cached and old quotes may fill (at their last price) instead
+     * of being refused. Off by default; an invalid price still never fills.
+     */
+    val allowClosedMarketFills: Boolean = false,
     /** Used only when bid/ask are missing and LTP is the fill reference. */
     val ltpSlippageBps: BigDecimal = BigDecimal.ZERO,
     /** If set, each fill event executes at most this many units/lots, to simulate partial fills. */
