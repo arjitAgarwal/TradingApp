@@ -301,8 +301,8 @@ private val ChipBlue = androidx.compose.ui.graphics.Color(0xFF5367FF)
 /** Position card text: charcoal title, grey second line, softer profit green and loss red. */
 private val CardInk = androidx.compose.ui.graphics.Color(0xFF252B35)
 private val CardSub = androidx.compose.ui.graphics.Color(0xFF4F5866)
-private val CardGain = androidx.compose.ui.graphics.Color(0xFF009F82)
-private val CardLoss = androidx.compose.ui.graphics.Color(0xFFB65A5A)
+private val CardGain = androidx.compose.ui.graphics.Color(0xFF138971)
+private val CardLoss = androidx.compose.ui.graphics.Color(0xFFAD5C58)
 
 /**
  * Groww's tap-on-position sheet: a summary card (tap the name for contract details; Add SL/TGT), shortcuts to the

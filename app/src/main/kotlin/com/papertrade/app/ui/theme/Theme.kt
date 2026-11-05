@@ -12,8 +12,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 
 // Groww-like palette: clean white surfaces, a single green accent, muted grey text.
-val Gain = Color(0xFF00B386)
-val Loss = Color(0xFFEB5B3C)
+val Gain = Color(0xFF159980)
+val Loss = Color(0xFFB9504D)
 val Warn = Color(0xFFB7791F)
 val Demo = Color(0xFF7C3AED)
 val Accent = Color(0xFF3F51D9)             // selected tabs and bottom-bar item
