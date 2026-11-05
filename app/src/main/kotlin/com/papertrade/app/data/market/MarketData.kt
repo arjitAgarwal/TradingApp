@@ -114,6 +114,8 @@ interface MarketDataProvider {
         Result.failure(ProviderException("$displayName can't search futures yet", ProviderException.Kind.UNSUPPORTED))
     /** [expiry] null = nearest expiry the provider lists. */
     suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int = 12): Result<OptionChain>
+    /** Every option expiry the provider lists for an index, without needing the chain itself. */
+    suspend fun optionExpiries(underlying: Underlying): Result<List<LocalDate>> = optionChain(underlying, null, 1).map { it.expiries }
     /**
      * Option chain of an F&O stock, by its cash-market symbol ("NSE:RELIANCE-EQ"); [expiry] null = nearest. Fails with
      * [ProviderException.Kind.UNSUPPORTED] for a stock that has no options, or a provider that can't list them.
