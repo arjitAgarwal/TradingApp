@@ -143,6 +143,19 @@ class DemoProvider(private val clock: () -> Instant = { Instant.now() }, private
         }
     }
 
+    /** Index futures on the weekly expiries [futures] uses; stock futures monthly, on the last Tuesday. */
+    override suspend fun searchFutures(query: String) = runCatching {
+        val q = query.trim(); if (q.length < 2) return@runCatching emptyList()
+        roots.filter { r -> r.name.contains(q, true) || r.displayName.contains(q, true) || equities[r.spotSymbol]?.first?.contains(q, true) == true }
+            .sortedWith(compareBy({ !it.name.equals(q, true) }, { !it.name.startsWith(q, true) }, { it.name }))
+            .flatMap { r ->
+                val u = Underlying.values().firstOrNull { it.name == r.name }
+                (if (u != null) nextExpiries(u, 3) else monthlyExpiries(3)).map { e ->
+                    InstrumentInfo("DEMO:${r.name}${e.format(ymd)}FUT", "${r.displayName} FUT $e (demo)", Segment.FUTURES, r.lot, BigDecimal("0.05"), e, underlying = r.name)
+                }
+            }
+    }
+
     override suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
         chain(root(underlying), underlying, nextExpiries(underlying, 3), expiry, strikesEachSide)
     }

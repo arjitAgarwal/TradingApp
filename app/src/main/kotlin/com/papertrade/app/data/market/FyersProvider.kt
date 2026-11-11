@@ -260,8 +260,26 @@ class FyersProvider(
         contracts.map { FutureContract(it.toInfo(), q[it.ticker]) }
     }
 
+    override suspend fun searchFutures(query: String) = runCatching {
+        val q = query.trim().uppercase(); if (q.length < 2) return@runCatching emptyList()
+        val today = clock().atZone(MarketHours.IST).toLocalDate()
+        // NSE_FO has NIFTY, BANKNIFTY and the stocks; SENSEX and BANKEX futures are on BSE_FO.
+        (master("NSE_FO") + runCatching { master("BSE_FO") }.getOrDefault(emptyList())).asSequence()
+            .filter { it.opt == null && it.ticker.endsWith("FUT") && it.expiry != null && !it.expiry.isBefore(today) && it.underlying.contains(q, true) }
+            .sortedWith(compareBy({ !it.underlying.equals(q, true) }, { !it.underlying.startsWith(q, true) }, { it.underlying }, { it.expiry }))
+            .take(30).map { it.toInfo() }.toList()
+    }
+
     override suspend fun optionChain(underlying: Underlying, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
         chainFor(underlying.indexSymbol, underlying.displayName, underlying, underlying.masterSegment(), expiry, strikesEachSide)
+    }
+
+    /** The chain response lists the dates, so this skips the symbol master (a slow download on the first open of the day). */
+    override suspend fun optionExpiries(underlying: Underlying) = runCatching {
+        val data = getJson("$dataBase/options-chain-v3?symbol=${enc(underlying.indexSymbol)}&strikecount=1")["data"] as? JsonObject
+            ?: throw ProviderException("Option chain not available for ${underlying.displayName}", ProviderException.Kind.UNSUPPORTED)
+        rememberEpochs(underlying.indexSymbol, data)
+        (data["expiryData"] as? JsonArray).orEmpty().mapNotNull { runCatching { LocalDate.parse(it.jsonObject["date"].str(), dateFmt) }.getOrNull() }
     }
 
     override suspend fun stockOptionChain(symbol: String, expiry: LocalDate?, strikesEachSide: Int) = runCatching {
