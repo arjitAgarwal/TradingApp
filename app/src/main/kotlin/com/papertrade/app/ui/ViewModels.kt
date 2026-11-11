@@ -109,6 +109,15 @@ class AppVM(private val c: AppContainer) : ViewModel() {
     fun createWatchlist(name: String) = viewModelScope.launch { c.watchlists.create(name) }
     fun renameWatchlist(id: Long, name: String) = viewModelScope.launch { c.watchlists.rename(id, name) }
     fun deleteWatchlist(id: Long) = viewModelScope.launch { c.watchlists.delete(id) }
+    /** Futures and options leave every watchlist the day after expiry (IST). Rechecked when the lists, the day or the account
+     *  (which loads with the instrument metadata) change; a symbol with no known expiry stays. */
+    init {
+        viewModelScope.launch {
+            combine(watchlists, now.map { it.atZone(MarketHours.IST).toLocalDate() }.distinctUntilChanged(), account) { l, today, _ -> l to today }.collect { (l, today) ->
+                l.forEach { w -> w.items.filter { info(it.symbol)?.expiry?.isBefore(today) == true }.forEach { c.watchlists.remove(w.id, it.symbol) } }
+            }
+        }
+    }
     /** Watchlist sparklines: 5-minute closes of each symbol's latest session, refetched at most every 5 minutes. */
     val sparks = MutableStateFlow<Map<String, List<BigDecimal>>>(emptyMap())
     private val sparkFetched = mutableMapOf<String, Instant>()
