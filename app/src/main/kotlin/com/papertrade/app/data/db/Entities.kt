@@ -56,3 +56,10 @@ data class QuoteCacheEntity(
     @PrimaryKey val symbol: String, val ltp: String, val bid: String?, val ask: String?, val prevClose: String?, val change: String?,
     val changePct: String?, val open: String?, val high: String?, val low: String?, val timestamp: Long, val originalSource: String,
 )
+
+/** A mutual fund entered by hand. Units are fractional; [nav]/[navDate] are the latest AMFI NAV, null until first fetched. */
+@Serializable
+@Entity(tableName = "mutual_funds")
+data class MutualFundEntity(
+    @PrimaryKey val schemeCode: String, val name: String, val units: String, val avgNav: String, val nav: String?, val navDate: String?, val addedAt: Long,
+)

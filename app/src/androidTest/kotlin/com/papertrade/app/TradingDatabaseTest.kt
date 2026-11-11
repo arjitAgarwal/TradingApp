@@ -33,6 +33,16 @@ class TradingDatabaseTest {
     private suspend fun open() { db = AppDatabase.build(ctx, name); repo = TradingRepository(db, { AppSettings(chargesEnabled = false) }); repo.init() }
     @After fun tearDown() { db.close(); ctx.deleteDatabase(name) }
 
+    @Test fun addedHoldingKeepsCashAndNetPnlStartsAtZero() = runBlocking {
+        repo.addHolding(info, 10, BigDecimal("100")); repo.addHolding(info, 10, BigDecimal("200"))
+        val s = repo.account.first(); val p = s.positions.getValue("NSE:TEST-EQ")
+        assertEquals(20, p.quantity); assertEquals(0, BigDecimal("150").compareTo(p.avgPrice))
+        assertEquals(0, BigDecimal("1354510").compareTo(s.wallet.cash))
+        assertEquals(0, BigDecimal("1357510").compareTo(s.wallet.startingCapital))
+        assertEquals(0, BigDecimal.ZERO.compareTo(repo.valuation(s) { BigDecimal("150") }.netPnl))
+        assertEquals(0, BigDecimal("200").compareTo(repo.valuation(s) { BigDecimal("160") }.netPnl))
+    }
+
     @Test fun startsWithTenLakh() = runBlocking {
         assertEquals(0, BigDecimal("1354510").compareTo(repo.account.first().wallet.cash))
     }

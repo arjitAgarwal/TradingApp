@@ -73,3 +73,15 @@ interface MarketCacheDao {
     @Query("SELECT * FROM quote_cache") fun quotes(): Flow<List<QuoteCacheEntity>>
     @Query("SELECT * FROM quote_cache") suspend fun quotesNow(): List<QuoteCacheEntity>
 }
+
+@Dao
+interface MutualFundDao {
+    @Query("SELECT * FROM mutual_funds ORDER BY addedAt") fun all(): Flow<List<MutualFundEntity>>
+    @Query("SELECT * FROM mutual_funds ORDER BY addedAt") suspend fun allNow(): List<MutualFundEntity>
+    @Query("SELECT * FROM mutual_funds WHERE schemeCode = :code") suspend fun get(code: String): MutualFundEntity?
+    @Upsert suspend fun upsert(f: MutualFundEntity)
+    @Query("UPDATE mutual_funds SET nav = :nav, navDate = :date WHERE schemeCode = :code") suspend fun setNav(code: String, nav: String, date: String)
+    @Query("DELETE FROM mutual_funds WHERE schemeCode = :code") suspend fun delete(code: String)
+    @Query("DELETE FROM mutual_funds") suspend fun clear()
+    @Transaction suspend fun replaceAll(f: List<MutualFundEntity>) { clear(); f.forEach { upsert(it) } }
+}
