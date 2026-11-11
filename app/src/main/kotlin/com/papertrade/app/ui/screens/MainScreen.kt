@@ -770,17 +770,13 @@ private fun OptionsTab(vm: AppVM, nav: Nav) {
             when {
                 ch == null && error != null -> Text("Option chain unavailable: $error", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
                 ch == null -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                else -> LazyColumn(Modifier.testTag("options_list"), state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 60.dp)) {
+                else -> LazyColumn(Modifier.testTag("options_list"), state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
                     items(sides, key = { it.second.symbol }) { (strike, s) ->
                         val money = when { atm == null -> null; strike == atm -> "ATM"; (strike < atm) == calls -> "ITM"; else -> "OTM" }
                         StrikeRow(u, strike, if (calls) "CE" else "PE", ch.selectedExpiry, money, quotes[s.symbol] ?: s.quote) { action = s.symbol }
                     }
                 }
             }
-        }
-        Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 15.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PillButton(NavIcons.candles, "Charts", Modifier.weight(1f).testTag("opt_charts"), ownColors = true) { nav.index(u) }
-            PillButton(NavIcons.chainLink, "Option Chain", Modifier.weight(1f).testTag("opt_chain")) { nav.chain(u) }
         }
     }
     action?.let { sym -> val holder = lists.firstOrNull { w -> w.items.any { it.symbol == sym } }
@@ -860,13 +856,5 @@ private fun MoneyTag(t: String) {
     val (bg, fg) = when (t) { "ITM" -> Gain.copy(alpha = 0.12f) to Color(0xFF0B7A5C); "ATM" -> Color(0xFFFFEBD2) to Color(0xFF9A5B00); else -> Color(0xFFEDEEF3) to Color(0xFF55586A) }
     Box(Modifier.height(16.dp).background(bg, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
         Text(t, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.Medium, color = fg)
-    }
-}
-
-/** Light blue pill button with a blue icon and label, as under the Options list. */
-@Composable
-private fun PillButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, ownColors: Boolean = false, onClick: () -> Unit) {
-    Row(modifier.height(38.dp).clip(CircleShape).background(Color(0xFFEEF0FA)).clickable(onClick = onClick), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(18.dp), tint = if (ownColors) Color.Unspecified else Accent); Spacer(Modifier.width(8.dp)); Text(label, fontSize = 15.sp, lineHeight = 20.sp, color = Accent)
     }
 }
