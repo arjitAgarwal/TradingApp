@@ -147,6 +147,9 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
     val pnl = all.associate { p -> p.instrumentId to ((val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.netPnl ?: p.realizedNet)
         - (earlier[p.instrumentId]?.let { (g, c) -> g - c } ?: BigDecimal.ZERO)) }
     val open = all.filter { it.isOpen }; val closed = all.filterNot { it.isOpen }
+    // Open positions are always streamed; closed ones are not, so keep their LTP live while they are listed here.
+    val closedSyms = closed.map { it.instrumentId }.toSet()
+    DisposableEffect(closedSyms) { vm.subscribe("positions_closed", closedSyms); onDispose { vm.unsubscribe("positions_closed") } }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     LazyColumn(Modifier.fillMaxSize()) {
         item {
