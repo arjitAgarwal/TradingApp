@@ -122,11 +122,12 @@ fun Sparkline(closes: List<BigDecimal>, ltp: BigDecimal?, prevClose: BigDecimal?
 
 /** Empty tab: a large soft icon in a circle, a title and one line of help, centred. */
 @Composable
-fun EmptyState(icon: ImageVector, title: String, body: String? = null) =
+fun EmptyState(icon: ImageVector, title: String, body: String? = null, action: (@Composable () -> Unit)? = null) =
     Column(Modifier.fillMaxSize().padding(24.dp).testTag("empty_state"), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(120.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f), CircleShape), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(56.dp))
         }
         Text(title, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 20.dp))
         if (body != null) Text(body, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+        action?.let { Spacer(Modifier.height(8.dp)); it() }
     }
