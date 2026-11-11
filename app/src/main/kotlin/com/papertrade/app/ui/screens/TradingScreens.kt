@@ -25,6 +25,19 @@ import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Savings
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.InsertDriveFile
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Receipt
+import androidx.compose.material.icons.outlined.Spa
+import androidx.compose.foundation.border
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -303,53 +316,409 @@ private val CardGain = androidx.compose.ui.graphics.Color(0xFF138971)
 private val CardLoss = androidx.compose.ui.graphics.Color(0xFFAD5C58)
 private val TotalCheck = androidx.compose.ui.graphics.Color(0xFF007E62)
 
+private enum class HoldTab(val label: String) { OVERVIEW("Overview"), EQUITY("Equity"), FUNDS("Mutual Funds") }
+private val WealthTop = androidx.compose.ui.graphics.Color(0xFF2F3E52)
+private val WealthBottom = androidx.compose.ui.graphics.Color(0xFF1E2A39)
+private val WealthGain = androidx.compose.ui.graphics.Color(0xFF4CC9A4)
+private val WealthLoss = androidx.compose.ui.graphics.Color(0xFFFF6B6B)
+private val PageGrey = androidx.compose.ui.graphics.Color(0xFFF2F4F8)
+
+/** Totals for one asset class: what was paid, what it is worth now, and today's move (null when no previous close is known). */
+private data class AssetSum(val invested: BigDecimal, val current: BigDecimal, val today: BigDecimal?) {
+    val pnl get() = current - invested
+    fun pct(v: BigDecimal) = if (invested.signum() == 0) BigDecimal.ZERO else Dec.div(v * BigDecimal(100), invested)
+}
+
+/**
+ * Portfolio, Holdings page: Overview / Equity / Mutual Funds tabs. Overview is a dark summary card (current value, overall and
+ * today's gain, invested value; the eye hides amounts) over an Assets list. Equity and Mutual Funds list the rows.
+ */
 @Composable
 fun HoldingsScreen(vm: AppVM, nav: Nav) {
     val acc by vm.account.collectAsState(); val v by vm.valuation.collectAsState(); val quotes by vm.quotes.collectAsState()
     val holdings = acc?.positions?.values?.filter { vm.info(it.instrumentId)?.segment == Segment.EQUITY || vm.info(it.instrumentId) == null && it.instrumentId.endsWith("-EQ") }?.filter { it.isOpen || it.realizedGross.signum() != 0 } ?: emptyList()
     val funds by vm.mutualFunds.collectAsState(); var fundSel by remember { mutableStateOf<com.papertrade.app.data.repo.MutualFundHolding?>(null) }
+    var tab by rememberSaveable { mutableStateOf(HoldTab.OVERVIEW) }; var adding by remember { mutableStateOf<AddKind?>(null) }
+    var hidden by rememberSaveable { mutableStateOf(false) }; val soon = { vm.messages.tryEmit("Coming soon"); Unit }
+    adding?.let { k -> AddHoldingDialog(vm, k) { adding = null } }
     LaunchedEffect(Unit) { vm.refreshFunds() }
-    if (holdings.isEmpty() && funds.isEmpty()) { EmptyState(Icons.Outlined.Inventory2, "No holdings", "Stocks you buy for delivery show up here. Add ones you already own from Account."); return }
+    // Open stocks at the live price (buy price until one arrives); today's move needs the previous close. Funds have one NAV a day, no day change.
+    val held = holdings.filter { it.isOpen }
+    val eq = AssetSum(held.fold(BigDecimal.ZERO) { s, p -> s + Dec.money(p.avgPrice * BigDecimal(p.quantity)) },
+        held.fold(BigDecimal.ZERO) { s, p -> s + Dec.money((quotes[p.instrumentId]?.ltp ?: p.avgPrice) * BigDecimal(p.quantity)) },
+        held.mapNotNull { p -> quotes[p.instrumentId]?.let { q -> q.prevClose?.let { pc -> Dec.money((q.ltp - pc) * BigDecimal(p.quantity)) } } }.takeIf { it.isNotEmpty() }?.fold(BigDecimal.ZERO, BigDecimal::add))
+    val mf = AssetSum(funds.fold(BigDecimal.ZERO) { s, f -> s + f.invested }, funds.fold(BigDecimal.ZERO) { s, f -> s + f.current }, null)
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp)) {
+            HoldTab.values().forEach { t -> val on = t == tab
+                Column(Modifier.clickable { tab = t }.padding(horizontal = 12.dp).testTag("hold_tab_${t.name}"), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(t.label, fontSize = 16.sp, lineHeight = 20.sp, color = if (on) Accent else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 14.dp))
+                    Box(Modifier.width(56.dp).height(3.dp).background(if (on) Accent else Color.Transparent))
+                }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        when (tab) {
+            HoldTab.OVERVIEW -> HoldingsOverview(eq, mf, held.isNotEmpty(), funds.isNotEmpty(), held.map { p -> p.instrumentId.substringAfter(":").removeSuffix("-EQ") to quotes[p.instrumentId]?.changePct },
+                onEquity = { tab = HoldTab.EQUITY }, onFunds = { tab = HoldTab.FUNDS }, onAdd = { adding = it }, onSoon = soon, hidden = hidden, onEye = { hidden = !hidden })
+            HoldTab.EQUITY -> if (holdings.isEmpty()) EmptyState(Icons.Outlined.Inventory2, "No stocks", "Stocks you buy for delivery show up here.") { TextButton({ adding = AddKind.STOCK }) { Text("+ Add a stock you already own") } }
+                else EquityTab(holdings, eq, quotes, v, hidden, { hidden = !hidden }, nav, { adding = AddKind.STOCK }, soon)
+            HoldTab.FUNDS -> if (funds.isEmpty()) EmptyState(Icons.Outlined.Savings, "No mutual funds", "Add funds you already hold to track them at the latest NAV.") { TextButton({ adding = AddKind.FUND }) { Text("+ Add a mutual fund") } }
+                else FundRows(funds, { fundSel = it }) { adding = AddKind.FUND }
+        }
+    }
     fundSel?.let { f -> AlertDialog(onDismissRequest = { fundSel = null }, title = { Text(f.name, fontSize = 16.sp) }, text = { Column {
         StatRow("Units", f.units.toPlainString()); StatRow("Avg NAV", Fmt.rupee(f.avgNav, 4)); StatRow("Latest NAV", Fmt.rupee(f.latestNav, 4) + (f.navDate?.let { " (${it.format(java.time.format.DateTimeFormatter.ofPattern("d MMM"))})" } ?: ""))
         StatRow("Invested", Fmt.rupee(f.invested)); StatRow("Current", Fmt.rupee(f.current)); StatRow("P&L", Fmt.signed(f.pnl), Fmt.color(f.pnl, MaterialTheme.colorScheme.onSurface))
     } }, confirmButton = { TextButton({ fundSel = null }) { Text("Close") } },
         dismissButton = { TextButton({ vm.removeFund(f.schemeCode); fundSel = null }, Modifier.testTag("fund_remove")) { Text("Remove", color = MaterialTheme.colorScheme.error) } }) }
+}
+
+/**
+ * Overview tab: the dark summary card (with the look-only VERIFY TO SELL strip), the Assets list (Equity, Mutual Funds; ◀ ▶ flips the rows
+ * between overall and today's gain), then the look-only MTF Borrowing and Start SIP rows, Tools grid and News strip.
+ */
+@Composable
+private fun HoldingsOverview(eq: AssetSum, mf: AssetSum, hasEq: Boolean, hasMf: Boolean, movers: List<Pair<String, BigDecimal?>>, onEquity: () -> Unit, onFunds: () -> Unit, onAdd: (AddKind) -> Unit, onSoon: () -> Unit, hidden: Boolean, onEye: () -> Unit) {
+    var todayView by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().background(PageGrey).verticalScroll(rememberScrollState())) {
+        WealthCard(eq.current + mf.current, eq.invested + mf.invested, eq.today, hidden, onEye, onAnalyze = null, onVerify = onSoon, todayOn = eq.current)
+        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Assets", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable { todayView = !todayView }.padding(4.dp).testTag("assets_switch"), verticalAlignment = Alignment.CenterVertically) {
+                    Text("◀▶", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface); Spacer(Modifier.width(6.dp))
+                    Text(if (todayView) "Today's Gain/Loss" else "Overall Gain/Loss", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            AssetRow({ EquityIcon() }, "EQUITY", eq, hasEq, todayView, hidden, "Buy stocks for delivery, or add ones you own", "ADD STOCK", { onAdd(AddKind.STOCK) }, onEquity, "asset_equity")
+            HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            AssetRow({ FundIcon() }, "MUTUAL FUNDS", mf, hasMf, todayView, hidden, "Track funds you already hold", "ADD FUND", { onAdd(AddKind.FUND) }, onFunds, "asset_funds")
+        }
+        Spacer(Modifier.height(8.dp))
+        PromoRow({ MtfIcon() }, "MTF Borrowing", "Maximize your gains by 4x", "GET STARTED", onSoon, "promo_mtf")
+        Spacer(Modifier.height(8.dp))
+        PromoRow({ Icon(Icons.Outlined.CalendarMonth, null, Modifier.size(32.dp), tint = Accent) }, "Start SIP", "Invest regularly, grow steadily", "START A SIP", onSoon, "promo_sip")
+        Spacer(Modifier.height(8.dp))
+        ToolsGrid(onSoon)
+        Spacer(Modifier.height(8.dp))
+        NewsStrip(movers, onSoon)
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+/**
+ * The dark summary card shared by Overview and Equity: current value with the eye (hides amounts), overall gain or loss, invested value
+ * and today's gain or loss, arrows in green or red. A darker strip at the bottom holds ANALYZE (Equity only) and VERIFY TO SELL, both look only.
+ */
+@Composable
+private fun WealthCard(current: BigDecimal, invested: BigDecimal, today: BigDecimal?, hidden: Boolean, onEye: () -> Unit, onAnalyze: (() -> Unit)?, onVerify: () -> Unit, todayOn: BigDecimal = current) {
+    val overall = current - invested
+    val overallPct = if (invested.signum() == 0) BigDecimal.ZERO else Dec.div(overall * BigDecimal(100), invested)
+    val todayBase = todayOn - (today ?: BigDecimal.ZERO) // today's % is on what moved today (stocks), not on funds
+    val todayPct = if (today == null || todayBase.signum() == 0) null else Dec.div(today * BigDecimal(100), todayBase)
+    fun amt(v: BigDecimal, d: Int = 2) = if (hidden) "₹ ••••" else Fmt.rupee(v, d)
+    fun pctText(v: BigDecimal) = "(" + Fmt.pct(v) + ")"
+    val white = Color.White; val soft = Color(0xFFC9D2DE); val loss = overall.signum() < 0; val down = (today ?: BigDecimal.ZERO).signum() < 0
+    Column(Modifier.padding(horizontal = 8.dp, vertical = 10.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp))
+        .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(WealthTop, WealthBottom)))
+        .drawBehind { // the faint diagonal band across the card
+            val w = size.width; val h = size.height
+            drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(0.36f * w, 0f); lineTo(0.62f * w, 0f); lineTo(0.88f * w, h); lineTo(0.62f * w, h); close() }, Color.White.copy(alpha = 0.05f))
+        }.testTag("wealth_card")) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(amt(current, 0), fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.Medium, color = white, modifier = Modifier.testTag("wealth_current"))
+                Spacer(Modifier.width(10.dp))
+                Icon(if (hidden) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (hidden) "Show amounts" else "Hide amounts", Modifier.size(22.dp).clip(RoundedCornerShape(50)).clickable(onClick = onEye).testTag("wealth_eye"), tint = white)
+            }
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (loss) "↓" else "↑", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (loss) WealthLoss else WealthGain)
+                Text(" Overall " + (if (loss) "Loss " else "Gain "), fontSize = 15.sp, color = white)
+                Text(amt(overall), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (loss) WealthLoss else WealthGain)
+                Text(" " + pctText(overallPct), fontSize = 15.sp, color = white)
+            }
+            Row(Modifier.padding(top = 18.dp)) {
+                Column(Modifier.weight(1f)) { Text("Invested Value", fontSize = 14.sp, color = soft); Text(amt(invested, 0), fontSize = 17.sp, fontWeight = FontWeight.Medium, color = white, modifier = Modifier.padding(top = 2.dp)) }
+                Column(horizontalAlignment = Alignment.End) {
+                    Row { Text(if (down) "↓" else "↑", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (down) WealthLoss else WealthGain); Text(" Today's " + (if (down) "Loss" else "Gain"), fontSize = 14.sp, color = soft) }
+                    Row(Modifier.padding(top = 2.dp)) {
+                        Text(today?.let { amt(it) } ?: "—", fontSize = 17.sp, fontWeight = FontWeight.Medium, color = if (down) WealthLoss else WealthGain, modifier = Modifier.testTag("wealth_today"))
+                        todayPct?.let { Text(" " + pctText(it), fontSize = 17.sp, color = white) }
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.22f)).padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+            onAnalyze?.let { a -> Row(Modifier.clickable(onClick = a).testTag("analyze"), verticalAlignment = Alignment.CenterVertically) {
+                PulseIcon(); Spacer(Modifier.width(8.dp))
+                Text("ANALYZE", fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp, color = VerifyCyan)
+            } }
+            Spacer(Modifier.weight(1f))
+            Row(Modifier.clickable(onClick = onVerify).testTag("verify_to_sell"), verticalAlignment = Alignment.CenterVertically) {
+                Text("VERIFY TO SELL", fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.5.sp, color = VerifyCyan)
+                Spacer(Modifier.width(6.dp)); Icon(Icons.Outlined.Lock, null, Modifier.size(16.dp), tint = VerifyCyan)
+            }
+        }
+    }
+}
+
+/**
+ * Equity tab: the summary card for stocks alone (with ANALYZE), a search box with a filter button, one raised card per stock
+ * ("qty X ATP avg", P&L with %, LTP with the day's %), and the look-only TPIN strip pinned at the bottom.
+ */
+@Composable
+private fun EquityTab(holdings: List<Position>, eq: AssetSum, quotes: Map<String, com.papertrade.app.data.market.MarketQuote>, v: PortfolioValuation?, hidden: Boolean, onEye: () -> Unit,
+                      nav: Nav, onAdd: () -> Unit, onSoon: () -> Unit) {
+    var query by rememberSaveable { mutableStateOf("") }
+    fun name(p: Position) = p.instrumentId.substringAfter(':').removeSuffix("-EQ")
+    val shown = holdings.filter { query.isBlank() || name(it).contains(query.trim(), ignoreCase = true) }
+    Column(Modifier.fillMaxSize().background(PageGrey)) {
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp)) {
+            item(key = "card") { WealthCard(eq.current, eq.invested, eq.today, hidden, onEye, onAnalyze = onSoon, onVerify = onSoon) }
+            item(key = "search") {
+                Row(Modifier.padding(horizontal = 8.dp).padding(bottom = 10.dp).fillMaxWidth().height(56.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Search, null, Modifier.padding(start = 14.dp).size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box(Modifier.weight(1f).padding(horizontal = 10.dp), contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) Text("Search stocks by company", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        androidx.compose.foundation.text.BasicTextField(query, { query = it }, singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent), modifier = Modifier.fillMaxWidth().testTag("equity_search"))
+                    }
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Box(Modifier.size(56.dp).clickable(onClick = onSoon).testTag("equity_filter"), contentAlignment = Alignment.Center) { FilterIcon() }
+                }
+            }
+            items(shown, key = { it.instrumentId }) { p ->
+                val q = quotes[p.instrumentId]
+                val pnl = if (p.isOpen) Dec.money(((q?.ltp ?: p.avgPrice) - p.avgPrice) * BigDecimal(p.quantity)) else p.realizedGross
+                val cost = Dec.money(p.avgPrice * BigDecimal(p.quantity)); val pnlPct = if (p.isOpen && cost.signum() != 0) Dec.div(pnl * BigDecimal(100), cost) else null
+                val day = q?.changePct ?: q?.prevClose?.takeIf { it.signum() != 0 }?.let { pc -> Dec.div((q.ltp - pc) * BigDecimal(100), pc) }
+                Card(Modifier.padding(horizontal = 16.dp, vertical = 5.dp).fillMaxWidth().alpha(if (p.isOpen) 1f else 0.5f).clickable { nav.stock(p.instrumentId) }.testTag("holding_${p.instrumentId}"),
+                    shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(name(p), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(if (hidden) "₹ ••••" else Fmt.rupee(pnl), fontSize = 17.sp, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
+                            pnlPct?.let { Text(" (" + Fmt.pct(it) + ")", fontSize = 14.sp) }
+                        }
+                        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${p.quantity} X ", fontSize = 14.sp); Text("ATP ", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(Fmt.rupee(p.avgPrice), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text("LTP ", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(Fmt.rupee(q?.ltp), fontSize = 14.sp, color = Fmt.color(day, MaterialTheme.colorScheme.onSurface))
+                            day?.let { Text(" (" + Fmt.pct(it) + ")", fontSize = 14.sp) }
+                        }
+                    }
+                }
+            }
+            if (shown.isEmpty()) item(key = "none") { Text("No stocks match", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+            item(key = "add_stock") { TextButton(onAdd, Modifier.padding(horizontal = 8.dp).testTag("holdings_add_stock")) { Text("+ Add a stock you already own") } }
+        }
+        // Pinned reminder strip, as in the reference. Look only for now.
+        Row(Modifier.fillMaxWidth().background(TpinBg).clickable(onClick = onSoon).padding(horizontal = 12.dp, vertical = 12.dp).testTag("tpin_strip"), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(20.dp).clip(RoundedCornerShape(50)).background(TpinPurple), contentAlignment = Alignment.Center) { Text("!", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+            Spacer(Modifier.width(12.dp))
+            Text("Sell stocks without entering TPIN every time", fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 0.dp))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(24.dp))
+        }
+    }
+}
+
+private val TpinBg = androidx.compose.ui.graphics.Color(0xFFEAE4F7)
+private val TpinPurple = androidx.compose.ui.graphics.Color(0xFF6A2FD0)
+private val VerifyCyan = androidx.compose.ui.graphics.Color(0xFF3FC6DE)
+private val IconInk = androidx.compose.ui.graphics.Color(0xFF3A4150)
+private val CandleRed = androidx.compose.ui.graphics.Color(0xFFE5534B)
+private val CandleGreen = androidx.compose.ui.graphics.Color(0xFF2EB67D)
+
+/** Equity asset icon: red and green candles with a dark rising arrow over them. */
+@Composable
+private fun EquityIcon() = androidx.compose.foundation.Canvas(Modifier.size(36.dp)) {
+    val w = size.width; val h = size.height; val sw = 2.dp.toPx()
+    listOf(Triple(0.16f, 0.52f, CandleRed), Triple(0.38f, 0.62f, CandleGreen), Triple(0.60f, 0.44f, CandleRed), Triple(0.82f, 0.30f, CandleGreen)).forEach { (x, top, c) ->
+        drawLine(c, androidx.compose.ui.geometry.Offset(x * w, (top - 0.08f) * h), androidx.compose.ui.geometry.Offset(x * w, 0.98f * h), sw * 0.6f)
+        drawRect(c, androidx.compose.ui.geometry.Offset((x - 0.07f) * w, top * h), androidx.compose.ui.geometry.Size(0.14f * w, (0.9f - top) * h))
+    }
+    val pts = listOf(0.02f to 0.58f, 0.32f to 0.30f, 0.52f to 0.44f, 0.9f to 0.08f).map { (x, y) -> androidx.compose.ui.geometry.Offset(x * w, y * h) }
+    pts.zipWithNext().forEach { (a, b) -> drawLine(IconInk, a, b, sw, cap = androidx.compose.ui.graphics.StrokeCap.Round) }
+    val tip = pts.last()
+    drawLine(IconInk, tip, androidx.compose.ui.geometry.Offset(tip.x - 0.22f * w, tip.y), sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawLine(IconInk, tip, androidx.compose.ui.geometry.Offset(tip.x, tip.y + 0.22f * h), sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+}
+
+/** Mutual funds asset icon: an outlined money bag with a gold rupee coin. */
+@Composable
+private fun FundIcon() = Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        val w = size.width; val h = size.height; val sw = 2.dp.toPx(); val st = androidx.compose.ui.graphics.drawscope.Stroke(sw)
+        drawRoundRect(IconInk, androidx.compose.ui.geometry.Offset(0.12f * w, 0.34f * h), androidx.compose.ui.geometry.Size(0.76f * w, 0.62f * h), androidx.compose.ui.geometry.CornerRadius(0.3f * w), style = st)
+        val neck = androidx.compose.ui.graphics.Path().apply { moveTo(0.36f * w, 0.34f * h); lineTo(0.26f * w, 0.08f * h); lineTo(0.74f * w, 0.08f * h); lineTo(0.64f * w, 0.34f * h) }
+        drawPath(neck, IconInk, style = st)
+        drawLine(IconInk, androidx.compose.ui.geometry.Offset(0.32f * w, 0.26f * h), androidx.compose.ui.geometry.Offset(0.68f * w, 0.26f * h), sw)
+        drawCircle(androidx.compose.ui.graphics.Color(0xFFF5B82E), 0.2f * w, androidx.compose.ui.geometry.Offset(0.5f * w, 0.66f * h))
+    }
+    Text("₹", fontSize = 10.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.offset(y = 5.dp))
+}
+
+/** MTF icon: a ring with a purple arc and a percent sign. */
+@Composable
+private fun MtfIcon() = Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        val r = size.minDimension / 2
+        drawCircle(IconInk, r * 0.86f, style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+        drawArc(androidx.compose.ui.graphics.Color(0xFF7B3FE4), -90f, 110f, false, androidx.compose.ui.geometry.Offset(r * 0.14f, r * 0.14f), androidx.compose.ui.geometry.Size(r * 1.72f, r * 1.72f), style = androidx.compose.ui.graphics.drawscope.Stroke(4.dp.toPx()))
+        drawCircle(IconInk, r * 0.52f, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+    }
+    Text("%", fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.Bold, color = IconInk)
+}
+
+/** A white block with an icon, title and line on the left and an outlined button on the right (MTF Borrowing, Start SIP). Look only for now. */
+@Composable
+private fun PromoRow(icon: @Composable () -> Unit, title: String, line: String, button: String, onClick: () -> Unit, tag: String) {
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 18.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) { icon() }; Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text(line, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+        }
+        OutlinedButton(onClick, shape = RoundedCornerShape(6.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Accent), contentPadding = PaddingValues(horizontal = 12.dp)) {
+            Text(button, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+        }
+    }
+}
+
+/** Tools: a 3 x 2 grid of tiles with page dots under it. Look only for now. */
+@Composable
+private fun ToolsGrid(onClick: () -> Unit) {
+    val tiles = listOf("Buy Back" to Icons.Outlined.Autorenew, "Edit Buy Price" to Icons.Outlined.InsertDriveFile, "Profit & Loss" to Icons.Outlined.BarChart,
+        "Tax Report" to Icons.Outlined.Description, "Trades and Charges" to Icons.Outlined.Receipt, "Stock SIP" to Icons.Outlined.Spa)
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 16.dp).testTag("tools")) {
+        Text("Tools", fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 14.dp))
+        tiles.chunked(3).forEach { row ->
+            Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { (label, icon) ->
+                    Column(Modifier.weight(1f).height(84.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Box(contentAlignment = Alignment.Center) { // rupee marks on Buy Back and Edit Buy Price
+                            Icon(icon, null, Modifier.size(30.dp), tint = if (label == "Profit & Loss") Accent else IconInk)
+                            if (label == "Buy Back" || label == "Edit Buy Price") Text("₹", fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.Bold, color = IconInk, modifier = Modifier.offset(y = if (label == "Buy Back") 0.dp else 2.dp))
+                        }
+                        Text(label, fontSize = 13.sp, lineHeight = 16.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
+            Box(Modifier.size(16.dp, 5.dp).clip(RoundedCornerShape(3.dp)).background(Accent)); Spacer(Modifier.width(5.dp))
+            Box(Modifier.size(5.dp).clip(RoundedCornerShape(3.dp)).background(MaterialTheme.colorScheme.outline))
+        }
+    }
+}
+
+/**
+ * News: a sideways row of cards, one per held stock with its day change. The app has no news source yet, so each card says that
+ * headlines will show there; nothing is made up.
+ */
+@Composable
+private fun NewsStrip(movers: List<Pair<String, BigDecimal?>>, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(vertical = 16.dp).testTag("news")) {
+        Row(Modifier.padding(horizontal = 16.dp).clickable(onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
+            Text("News", fontSize = 18.sp, fontWeight = FontWeight.Medium); Spacer(Modifier.width(6.dp))
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(24.dp), tint = Accent)
+        }
+        val cards = movers.ifEmpty { listOf("" to null) }
+        androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 12.dp)) {
+            items(cards.size) { i -> val (sym, chg) = cards[i]
+                Column(Modifier.width(300.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Market news", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        Text("COMING SOON", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = CandleGreen, modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(CandleGreen.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (sym.isEmpty()) "News for your stocks" else "News for $sym", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(22.dp))
+                    }
+                    Text("Headlines about the stocks you hold will show here.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, modifier = Modifier.padding(top = 6.dp))
+                    if (sym.isNotEmpty()) Row(Modifier.padding(top = 10.dp)) {
+                        val c = if ((chg ?: BigDecimal.ZERO).signum() < 0) CandleRed else CandleGreen
+                        Text("$sym  " + (chg?.let { Fmt.pct(it) } ?: "—"), fontSize = 12.sp, fontWeight = FontWeight.Medium, color = c,
+                            modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(c.copy(alpha = 0.12f)).padding(horizontal = 10.dp, vertical = 4.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One Assets row: invested value and gain on the right, or a short line and an outlined button when nothing is held yet. */
+@Composable
+private fun AssetRow(icon: @Composable () -> Unit, title: String, s: AssetSum, has: Boolean, todayView: Boolean, hidden: Boolean,
+                     emptyText: String, button: String, onButton: () -> Unit, onOpen: () -> Unit, tag: String) {
+    Row(Modifier.fillMaxWidth().clickable(enabled = has, onClick = onOpen).padding(horizontal = 16.dp, vertical = 18.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) { icon() }; Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text(if (has) "Invested Value " + (if (hidden) "₹ ••••" else Fmt.rupee(s.invested, 0)) else emptyText, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+        }
+        if (has) Column(horizontalAlignment = Alignment.End) {
+            val v = if (todayView) s.today else s.pnl
+            Text(v?.let { if (hidden) "₹ ••••" else signedRupee(it) } ?: "—", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Fmt.color(v, MaterialTheme.colorScheme.onSurface))
+            if (v != null && !todayView) Text(Fmt.pct(s.pct(v)), fontSize = 13.sp, color = Fmt.color(v, MaterialTheme.colorScheme.onSurface), modifier = Modifier.padding(top = 4.dp))
+        } else OutlinedButton(onButton, shape = RoundedCornerShape(6.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Accent), contentPadding = PaddingValues(horizontal = 12.dp)) {
+            Text(button, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Accent)
+        }
+    }
+}
+
+/** Mutual Funds tab: one row per fund (name, "units · Avg", P&L, NAV); tapping opens its details. */
+@Composable
+private fun FundRows(funds: List<com.papertrade.app.data.repo.MutualFundHolding>, onOpen: (com.papertrade.app.data.repo.MutualFundHolding) -> Unit, onAdd: () -> Unit) {
     LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
-        if (funds.isNotEmpty() && holdings.isNotEmpty()) item(key = "eq_header") { Text("Stocks", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)) }
-        items(holdings, key = { it.instrumentId }) { p -> val r = v?.positions?.firstOrNull { it.instrumentId == p.instrumentId }; val q = quotes[p.instrumentId]
-            val pnl = r?.unrealized?.let { it + p.realizedGross } ?: p.realizedGross
-            // Flat row: name / "qty shares · Avg ₹x" on the left; P&L / "LTP ₹y" on the right.
-            Column(Modifier.fillMaxWidth().clickable { nav.stock(p.instrumentId) }.testTag("holding_${p.instrumentId}")) {
+        items(funds, key = { "mf_" + it.schemeCode }) { f ->
+            Column(Modifier.fillMaxWidth().clickable { onOpen(f) }.testTag("fund_${f.schemeCode}")) {
                 Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(p.instrumentId.substringAfter(':').removeSuffix("-EQ"), fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text("${p.quantity} shares · Avg ${Fmt.rupee(p.avgPrice)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(f.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text("${f.units.toPlainString()} units · Avg ${Fmt.rupee(f.avgNav)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text((if (pnl.signum() > 0) "+" else "") + Fmt.rupee(pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
-                        Text("LTP ${Fmt.rupee(q?.ltp)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text((if (f.pnl.signum() > 0) "+" else "") + Fmt.rupee(f.pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(f.pnl, MaterialTheme.colorScheme.onSurface))
+                        Text("NAV ${Fmt.rupee(f.nav)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
-        if (funds.isNotEmpty()) {
-            item(key = "mf_header") { Text("Mutual funds", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)) }
-            items(funds, key = { "mf_" + it.schemeCode }) { f ->
-                Column(Modifier.fillMaxWidth().clickable { fundSel = f }.testTag("fund_${f.schemeCode}")) {
-                    Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                            Text(f.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                            Text("${f.units.toPlainString()} units · Avg ${Fmt.rupee(f.avgNav)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text((if (f.pnl.signum() > 0) "+" else "") + Fmt.rupee(f.pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(f.pnl, MaterialTheme.colorScheme.onSurface))
-                            Text("NAV ${Fmt.rupee(f.nav)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        item(key = "add_fund") { TextButton(onAdd, Modifier.testTag("holdings_add_fund")) { Text("+ Add a mutual fund") } }
+    }
+}
+
+/**
+ * Portfolio, My Wealth page: everything in the app added up. Cash and F&O come from the virtual account (F&O = open futures' unrealised
+ * P&L plus options at market), stocks at market value, and mutual funds at the latest NAV.
+ */
+@Composable
+fun MyWealthScreen(vm: AppVM) {
+    val acc by vm.account.collectAsState(); val v by vm.valuation.collectAsState(); val funds by vm.mutualFunds.collectAsState()
+    val isStock = { id: String -> vm.info(id)?.segment == Segment.EQUITY || vm.info(id) == null && id.endsWith("-EQ") }
+    val stocks = v?.positions?.filter { isStock(it.instrumentId) && acc?.positions?.get(it.instrumentId)?.isOpen == true }?.fold(BigDecimal.ZERO) { s, p -> s + p.marketValue } ?: BigDecimal.ZERO
+    val fno = (v?.positionsValue ?: BigDecimal.ZERO) - stocks
+    val mf = funds.fold(BigDecimal.ZERO) { s, f -> s + f.current }; val cash = v?.cash ?: BigDecimal.ZERO
+    val total = cash + stocks + fno + mf
+    Column(Modifier.fillMaxSize().background(PageGrey).verticalScroll(rememberScrollState())) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 10.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(WealthTop, WealthBottom))).padding(horizontal = 16.dp, vertical = 18.dp).testTag("my_wealth_card")) {
+            Text("Total wealth", fontSize = 14.sp, color = Color(0xFFC9D2DE))
+            Text(Fmt.rupee(total, 0), fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.Medium, color = Color.White, modifier = Modifier.padding(top = 2.dp))
+        }
+        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            listOf("Cash" to cash, "Stocks" to stocks, "Futures & options" to fno, "Mutual funds" to mf).forEach { (label, amt) ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Text(Fmt.rupee(amt), fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
     }
@@ -534,3 +903,24 @@ private fun IntField(label: String, value: Int, onChange: (Int) -> Unit) {
     OutlinedTextField(text, { text = it.filter(Char::isDigit); text.toIntOrNull()?.let(onChange) }, label = { Text(label) }, singleLine = true, modifier = Modifier.fillMaxWidth())
 }
 private typealias Color = androidx.compose.ui.graphics.Color
+
+/** ANALYZE mark: a bare pulse line (flat, a dip, a spike, flat), as in the reference. */
+@Composable
+private fun PulseIcon() = androidx.compose.foundation.Canvas(Modifier.size(width = 22.dp, height = 16.dp)) {
+    val w = size.width; val h = size.height
+    val pts = listOf(0f to 0.62f, 0.28f to 0.62f, 0.4f to 0.95f, 0.56f to 0.05f, 0.7f to 0.62f, 1f to 0.62f).map { (x, y) -> androidx.compose.ui.geometry.Offset(x * w, y * h) }
+    drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(pts[0].x, pts[0].y); pts.drop(1).forEach { lineTo(it.x, it.y) } }, VerifyCyan,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(1.8.dp.toPx(), join = androidx.compose.ui.graphics.StrokeJoin.Round))
+}
+
+/** Filter mark: three grey sliders with flat knobs (outer two low, middle high); each line breaks around its knob. */
+@Composable
+private fun FilterIcon() = androidx.compose.foundation.Canvas(Modifier.size(26.dp)) {
+    val w = size.width; val h = size.height; val c = androidx.compose.ui.graphics.Color(0xFF6B7380); val lw = 2.dp.toPx(); val kw = 5.5.dp.toPx(); val kh = 3.dp.toPx(); val gap = 2.dp.toPx()
+    listOf(0.17f to 0.68f, 0.5f to 0.32f, 0.83f to 0.68f).forEach { (x, k) ->
+        val cx = x * w; val ky = k * h
+        drawLine(c, androidx.compose.ui.geometry.Offset(cx, 0.1f * h), androidx.compose.ui.geometry.Offset(cx, ky - kh / 2 - gap), lw)
+        drawLine(c, androidx.compose.ui.geometry.Offset(cx, ky + kh / 2 + gap), androidx.compose.ui.geometry.Offset(cx, 0.9f * h), lw)
+        drawRect(c, androidx.compose.ui.geometry.Offset(cx - kw / 2, ky - kh / 2), androidx.compose.ui.geometry.Size(kw, kh))
+    }
+}

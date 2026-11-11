@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.Person
 import com.papertrade.app.ui.theme.Accent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -100,7 +101,7 @@ private enum class Section { HOME, WATCHLIST, PORTFOLIO, ORDERS }
  */
 @Composable
 fun MainScreen(vm: AppVM, nav: Nav) {
-    var section by rememberSaveable { mutableStateOf(Section.WATCHLIST) }; var ordersTab by rememberSaveable { mutableIntStateOf(0) }
+    var section by rememberSaveable { mutableStateOf(Section.WATCHLIST) }; var ordersTab by rememberSaveable { mutableIntStateOf(0) }; var portfolioTab by rememberSaveable { mutableIntStateOf(0) }
     // Search takes over the page below the header until closed (back arrow or system back).
     var searching by rememberSaveable { mutableStateOf(false) }; var query by rememberSaveable { mutableStateOf("") }
     androidx.activity.compose.BackHandler(searching) { searching = false; query = "" }
@@ -116,8 +117,9 @@ fun MainScreen(vm: AppVM, nav: Nav) {
             Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
             if (section == Section.ORDERS && !searching) OrdersTabs(ordersTab, { ordersTab = it }, onSearch = { searching = true }, onMenu = nav.account)
+            else if (section == Section.PORTFOLIO && !searching) OrdersTabs(portfolioTab, { portfolioTab = it }, onSearch = { searching = true }, onMenu = nav.account, labels = listOf("Holdings", "My Wealth"), onProfile = nav.account)
             else SearchBar(searching, query, { query = it }, onOpen = { searching = true }, onClose = { searching = false; query = "" })
-            if (!searching) { IndexCards(vm, nav.index); HorizontalDivider() }
+            if (!searching && section != Section.PORTFOLIO) { IndexCards(vm, nav.index); HorizontalDivider() } // Portfolio opens straight on its own header, as in the reference
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
                 Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
                     color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
@@ -128,7 +130,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
         Box(Modifier.padding(pad).fillMaxSize()) {
             if (searching) SearchResults(vm, nav, query) else when (section) {
                 Section.HOME -> ExploreScreen(vm, nav); Section.WATCHLIST -> WatchlistsPage(vm, nav)
-                Section.PORTFOLIO -> HoldingsScreen(vm, nav); Section.ORDERS -> if (ordersTab == 0) OrdersScreen(vm) else PositionsScreen(vm, nav)
+                Section.PORTFOLIO -> if (portfolioTab == 0) HoldingsScreen(vm, nav) else MyWealthScreen(vm); Section.ORDERS -> if (ordersTab == 0) OrdersScreen(vm) else PositionsScreen(vm, nav)
             }
         }
     }
@@ -471,9 +473,9 @@ private fun WatchRow(label: Pair<String, String>, q: MarketQuote?, onClick: () -
  * with search and ⋮ in round white buttons on the right.
  */
 @Composable
-private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit, onMenu: () -> Unit) {
+private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit, onMenu: () -> Unit, labels: List<String> = listOf("Orders", "Positions"), onProfile: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().background(Color(0xFFEEF1F8)).height(56.dp).padding(start = 9.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        listOf("Orders", "Positions").forEachIndexed { i, t ->
+        labels.forEachIndexed { i, t ->
             Text(t, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (selected == i) Color(0xFF252B35) else Color(0xFF4F5866),
                 modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = 7.dp, vertical = 6.dp).testTag("tab_$t"))
@@ -481,6 +483,7 @@ private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> U
         Spacer(Modifier.weight(1f))
         @Composable fun RoundButton(onClick: () -> Unit, tag: String, content: @Composable () -> Unit) =
             Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White).clickable(onClick = onClick).testTag(tag), contentAlignment = Alignment.Center) { content() }
+        onProfile?.let { p -> Icon(Icons.Outlined.Person, "Account", Modifier.size(40.dp).clip(CircleShape).clickable(onClick = p).padding(8.dp).testTag("header_profile"), tint = Color(0xFF252B35)); Spacer(Modifier.width(10.dp)) }
         RoundButton(onSearch, "orders_search") { Icon(Icons.Default.Search, "Search", Modifier.size(24.dp), tint = Color(0xFF252B35)) }
         Spacer(Modifier.width(10.dp))
         RoundButton(onMenu, "orders_menu") { Icon(Icons.Default.MoreVert, "More", Modifier.size(24.dp), tint = Color(0xFF252B35)) }
