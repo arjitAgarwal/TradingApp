@@ -162,6 +162,9 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
         ?.let { f -> Dec.div(f.fold(BigDecimal.ZERO) { s, x -> s + x.price * BigDecimal(x.quantity) }, BigDecimal(f.sumOf { it.quantity })) }
     fun lots(id: String) = todays[id].orEmpty().let { f -> maxOf(f.filter { it.side == Side.BUY }.sumOf { it.quantity }, f.filter { it.side == Side.SELL }.sumOf { it.quantity }) }
     val open = all.filter { it.isOpen }; val closed = all.filterNot { it.isOpen }
+    // Open positions are always streamed; closed ones are not, so keep their LTP live while they are listed here.
+    val closedSyms = closed.map { it.instrumentId }.toSet()
+    DisposableEffect(closedSyms) { vm.subscribe("positions_closed", closedSyms); onDispose { vm.unsubscribe("positions_closed") } }
     fun matches(p: Position) = query.isBlank() || posTitle(p.instrumentId, vm.info(p.instrumentId)).text.contains(query.trim(), ignoreCase = true)
     val shownOpen = (if (filter == PosFilter.CLOSED) emptyList() else open).filter(::matches)
     val shownClosed = (if (filter == PosFilter.OPEN) emptyList() else closed).filter(::matches)
