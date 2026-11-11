@@ -90,6 +90,20 @@ class AppVM(private val c: AppContainer) : ViewModel() {
     fun export(onText: (String) -> Unit) { viewModelScope.launch { onText(c.trading.exportJson()) } }
     fun import(text: String) { viewModelScope.launch { runCatching { c.trading.importJson(text) }.onSuccess { messages.tryEmit("Import complete") }.onFailure { messages.tryEmit("Import failed: ${it.message}") } } }
 
+    /** A stock bought outside the app, brought into Holdings at the user's buy price. No cash moves (see TradingRepository.addHolding). */
+    fun addHolding(info: InstrumentInfo, qty: Int, price: BigDecimal, onDone: () -> Unit = {}) = viewModelScope.launch {
+        c.contracts[info.symbol] = info
+        runCatching { c.trading.addHolding(info, qty, price) }.onSuccess { messages.tryEmit("Added $qty ${info.name} to holdings"); onDone() }.onFailure { messages.tryEmit("Could not add: ${it.message}") }
+    }
+    val mutualFunds: StateFlow<List<com.papertrade.app.data.repo.MutualFundHolding>> = c.mutualFunds.holdings.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    suspend fun searchFunds(q: String) = c.mutualFunds.search(q)
+    fun addFund(code: String, name: String, units: BigDecimal, nav: BigDecimal, onDone: () -> Unit = {}) = viewModelScope.launch {
+        runCatching { c.mutualFunds.add(code, name, units, nav) }.onSuccess { messages.tryEmit("Added $name"); onDone(); refreshFunds() }.onFailure { messages.tryEmit("Could not add: ${it.message}") }
+    }
+    fun removeFund(code: String) = viewModelScope.launch { c.mutualFunds.remove(code); messages.tryEmit("Mutual fund removed") }
+    fun refreshFunds(force: Boolean = false) = viewModelScope.launch { c.mutualFunds.refreshNavs(force).onFailure { if (force) messages.tryEmit("NAV update failed: ${it.message}") } }
+    init { refreshFunds() }
+
     fun addToWatchlist(listId: Long, symbol: String, name: String) = viewModelScope.launch { c.watchlists.add(listId, symbol, name) }
     fun removeFromWatchlist(listId: Long, symbol: String) = viewModelScope.launch { c.watchlists.remove(listId, symbol) }
     fun createWatchlist(name: String) = viewModelScope.launch { c.watchlists.create(name) }

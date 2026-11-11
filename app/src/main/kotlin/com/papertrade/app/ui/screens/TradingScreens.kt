@@ -304,8 +304,16 @@ private val TotalCheck = androidx.compose.ui.graphics.Color(0xFF007E62)
 fun HoldingsScreen(vm: AppVM, nav: Nav) {
     val acc by vm.account.collectAsState(); val v by vm.valuation.collectAsState(); val quotes by vm.quotes.collectAsState()
     val holdings = acc?.positions?.values?.filter { vm.info(it.instrumentId)?.segment == Segment.EQUITY || vm.info(it.instrumentId) == null && it.instrumentId.endsWith("-EQ") }?.filter { it.isOpen || it.realizedGross.signum() != 0 } ?: emptyList()
-    if (holdings.isEmpty()) { EmptyState(Icons.Outlined.Inventory2, "No holdings", "Stocks you buy for delivery show up here."); return }
+    val funds by vm.mutualFunds.collectAsState(); var fundSel by remember { mutableStateOf<com.papertrade.app.data.repo.MutualFundHolding?>(null) }
+    LaunchedEffect(Unit) { vm.refreshFunds() }
+    if (holdings.isEmpty() && funds.isEmpty()) { EmptyState(Icons.Outlined.Inventory2, "No holdings", "Stocks you buy for delivery show up here. Add ones you already own from Account."); return }
+    fundSel?.let { f -> AlertDialog(onDismissRequest = { fundSel = null }, title = { Text(f.name, fontSize = 16.sp) }, text = { Column {
+        StatRow("Units", f.units.toPlainString()); StatRow("Avg NAV", Fmt.rupee(f.avgNav, 4)); StatRow("Latest NAV", Fmt.rupee(f.latestNav, 4) + (f.navDate?.let { " (${it.format(java.time.format.DateTimeFormatter.ofPattern("d MMM"))})" } ?: ""))
+        StatRow("Invested", Fmt.rupee(f.invested)); StatRow("Current", Fmt.rupee(f.current)); StatRow("P&L", Fmt.signed(f.pnl), Fmt.color(f.pnl, MaterialTheme.colorScheme.onSurface))
+    } }, confirmButton = { TextButton({ fundSel = null }) { Text("Close") } },
+        dismissButton = { TextButton({ vm.removeFund(f.schemeCode); fundSel = null }, Modifier.testTag("fund_remove")) { Text("Remove", color = MaterialTheme.colorScheme.error) } }) }
     LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp)) {
+        if (funds.isNotEmpty() && holdings.isNotEmpty()) item(key = "eq_header") { Text("Stocks", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)) }
         items(holdings, key = { it.instrumentId }) { p -> val r = v?.positions?.firstOrNull { it.instrumentId == p.instrumentId }; val q = quotes[p.instrumentId]
             val pnl = r?.unrealized?.let { it + p.realizedGross } ?: p.realizedGross
             // Flat row: name / "qty shares · Avg ₹x" on the left; P&L / "LTP ₹y" on the right.
@@ -323,6 +331,24 @@ fun HoldingsScreen(vm: AppVM, nav: Nav) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
+        if (funds.isNotEmpty()) {
+            item(key = "mf_header") { Text("Mutual funds", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 14.dp, bottom = 2.dp)) }
+            items(funds, key = { "mf_" + it.schemeCode }) { f ->
+                Column(Modifier.fillMaxWidth().clickable { fundSel = f }.testTag("fund_${f.schemeCode}")) {
+                    Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(f.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text("${f.units.toPlainString()} units · Avg ${Fmt.rupee(f.avgNav)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text((if (f.pnl.signum() > 0) "+" else "") + Fmt.rupee(f.pnl), fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Fmt.color(f.pnl, MaterialTheme.colorScheme.onSurface))
+                            Text("NAV ${Fmt.rupee(f.nav)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+        }
     }
 }
 
@@ -332,6 +358,8 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
     val acc by vm.account.collectAsState(); val v by vm.valuation.collectAsState(); val settings by vm.settings.collectAsState(); val ctx: Context = LocalContext.current
     val auth by vm.fyersAuth.collectAsState(); val upstoxAuth by vm.upstoxAuth.collectAsState()
     var confirmReset by remember { mutableStateOf(false) }
+    var adding by remember { mutableStateOf<AddKind?>(null) }; val funds by vm.mutualFunds.collectAsState()
+    adding?.let { k -> AddHoldingDialog(vm, k) { adding = null } }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         uri?.let { vm.export { text -> ctx.contentResolver.openOutputStream(it)?.use { o -> o.write(text.toByteArray()) } } } }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -343,6 +371,19 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
                 StatRow("Starting capital", Fmt.rupee(acc?.wallet?.startingCapital)); StatRow("Available cash", Fmt.rupee(v?.availableCash)); StatRow("Reserved margin", Fmt.rupee(v?.reservedMargin))
                 StatRow("Realized P&L", Fmt.signed(v?.realizedGross)); StatRow("Unrealized P&L", Fmt.signed(v?.unrealized)); StatRow("Charges", Fmt.rupee(v?.totalCharges))
                 StatRow("Net P&L", Fmt.signed(v?.netPnl), Fmt.color(v?.netPnl, MaterialTheme.colorScheme.onSurface)); StatRow("Total equity", Fmt.rupee(v?.equity), Color.Unspecified)
+            } }
+            Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Add to portfolio", fontWeight = FontWeight.SemiBold)
+                Text("Bring in stocks or mutual funds you already hold, at your own buy price. Cash is not used.", fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton({ adding = AddKind.STOCK }, Modifier.testTag("add_stock")) { Text("Add stock") }
+                    OutlinedButton({ adding = AddKind.FUND }, Modifier.testTag("add_fund")) { Text("Add mutual fund") }
+                }
+                if (funds.isNotEmpty()) {
+                    val inv = funds.fold(BigDecimal.ZERO) { s, f -> s + f.invested }; val cur = funds.fold(BigDecimal.ZERO) { s, f -> s + f.current }
+                    StatRow("Mutual funds invested", Fmt.rupee(inv)); StatRow("Mutual funds current", Fmt.rupee(cur))
+                    StatRow("Mutual funds P&L", Fmt.signed(cur - inv), Fmt.color(cur - inv, MaterialTheme.colorScheme.onSurface))
+                }
             } }
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Market data", fontWeight = FontWeight.SemiBold)
@@ -401,8 +442,68 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
             } }
         }
     }
-    if (confirmReset) AlertDialog(onDismissRequest = { confirmReset = false }, title = { Text("Reset simulation?") }, text = { Text("All simulated orders, trades and positions will be deleted. Export first if you want a backup.") },
+    if (confirmReset) AlertDialog(onDismissRequest = { confirmReset = false }, title = { Text("Reset simulation?") }, text = { Text("All orders, trades, positions, holdings and added mutual funds will be deleted. Export first if you want a backup.") },
         confirmButton = { TextButton({ vm.reset(); confirmReset = false }) { Text("Reset") } }, dismissButton = { TextButton({ confirmReset = false }) { Text("Cancel") } })
+}
+
+enum class AddKind { STOCK, FUND }
+
+/**
+ * Search a stock (from the market data provider) or a mutual fund (AMFI), then enter the buy price and units. Stock units are
+ * whole shares; fund units may have decimals.
+ */
+@Composable
+private fun AddHoldingDialog(vm: AppVM, kind: AddKind, onDismiss: () -> Unit) {
+    val fund = kind == AddKind.FUND
+    var query by remember { mutableStateOf("") }; var results by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var stocks by remember { mutableStateOf<Map<String, com.papertrade.app.data.market.InstrumentInfo>>(emptyMap()) }
+    var picked by remember { mutableStateOf<Pair<String, String>?>(null) }; var error by remember { mutableStateOf<String?>(null) }; var searching by remember { mutableStateOf(false) }
+    var price by remember { mutableStateOf("") }; var units by remember { mutableStateOf("") }
+    LaunchedEffect(query, picked) {
+        if (picked != null || query.trim().length < 2) { results = emptyList(); error = null; return@LaunchedEffect }
+        kotlinx.coroutines.delay(350); searching = true
+        if (fund) vm.searchFunds(query).onSuccess { l -> results = l.take(8).map { it.code to it.name }; error = if (l.isEmpty()) "No fund found" else null }.onFailure { error = it.message }
+        else vm.search(query).onSuccess { l -> val eq = l.filter { it.segment == Segment.EQUITY }.take(8); stocks = eq.associateBy { it.symbol }
+            results = eq.map { it.symbol to it.name }; error = if (eq.isEmpty()) "No stock found" else null }.onFailure { error = it.message }
+        searching = false
+    }
+    val p = price.toBigDecimalOrNull()?.takeIf { it.signum() > 0 }
+    val u = if (fund) units.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } else units.toIntOrNull()?.takeIf { it > 0 }?.let(::BigDecimal)
+    val total = if (p != null && u != null) Dec.money(p * u) else null
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (fund) "Add mutual fund" else "Add stock") }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val sel = picked
+            if (sel == null) {
+                OutlinedTextField(query, { query = it }, label = { Text(if (fund) "Fund name" else "Stock name") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("add_query"))
+                if (searching) LinearProgressIndicator(Modifier.fillMaxWidth())
+                error?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
+                Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
+                    results.forEach { r ->
+                        Column(Modifier.fillMaxWidth().clickable { picked = r }.padding(vertical = 8.dp).testTag("add_result_${r.first}")) {
+                            Text(if (fund) r.second else r.first.substringAfter(':').removeSuffix("-EQ"), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            if (!fund) Text(r.second, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (fund) sel.second else sel.first.substringAfter(':').removeSuffix("-EQ"), Modifier.weight(1f), fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    TextButton({ picked = null }) { Text("Change") }
+                }
+                OutlinedTextField(price, { s -> price = s.filter { it.isDigit() || it == '.' } }, label = { Text(if (fund) "Buy NAV (₹)" else "Buy price (₹)") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal), modifier = Modifier.fillMaxWidth().testTag("add_price"))
+                OutlinedTextField(units, { s -> units = s.filter { it.isDigit() || fund && it == '.' } }, label = { Text(if (fund) "Units" else "Shares") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = if (fund) androidx.compose.ui.text.input.KeyboardType.Decimal else androidx.compose.ui.text.input.KeyboardType.Number), modifier = Modifier.fillMaxWidth().testTag("add_units"))
+                Text("Invested ${Fmt.rupee(total)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }, confirmButton = {
+        TextButton({
+            val s = picked ?: return@TextButton; if (p == null || u == null) return@TextButton
+            if (fund) vm.addFund(s.first, s.second, u, p, onDismiss) else stocks[s.first]?.let { vm.addHolding(it, u.toInt(), p, onDismiss) }
+        }, enabled = picked != null && p != null && u != null, modifier = Modifier.testTag("add_confirm")) { Text("Add") }
+    }, dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
 
 /** Login status, Log in / Log out, and the one-time app setup (key, secret, redirect URI) for one broker. */

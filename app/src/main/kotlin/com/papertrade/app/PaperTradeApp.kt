@@ -27,6 +27,7 @@ class AppContainer(app: Application, providerOverride: ((DataMode, LiveSource) -
     private val upstox = UpstoxProvider(upstoxAuth, app.cacheDir)
     val trading = TradingRepository(db, settings = { settingsStore.settings.first() })
     val watchlists = WatchlistRepository(db)
+    val mutualFunds = MutualFundRepository(db, com.papertrade.app.data.market.MfApi())
     /** Contract metadata seen in chains/futures lists, so order tickets never need to guess lot size or tick. */
     val contracts = java.util.concurrent.ConcurrentHashMap<String, com.papertrade.app.data.market.InstrumentInfo>()
     val hub = QuoteHub(scope, providerOverride ?: { mode, source -> if (mode == DataMode.DEMO) demo else if (source == LiveSource.UPSTOX) upstox else fyers }, settingsStore.settings, trading, db.marketCache())
