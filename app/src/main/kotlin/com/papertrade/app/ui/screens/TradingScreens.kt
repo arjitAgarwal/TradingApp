@@ -638,7 +638,7 @@ private fun ToolsGrid(onClick: () -> Unit) {
     val tiles = listOf("Buy Back" to Icons.Outlined.Autorenew, "Edit Buy Price" to Icons.Outlined.InsertDriveFile, "Profit & Loss" to Icons.Outlined.BarChart,
         "Tax Report" to Icons.Outlined.Description, "Trades and Charges" to Icons.Outlined.Receipt, "Stock SIP" to Icons.Outlined.Spa)
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 16.dp).testTag("tools")) {
-        Text("Tools", fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = titleInk(), modifier = Modifier.padding(start = 4.dp, bottom = 16.dp))
+        Text("ALPHA Tools", fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = titleInk(), modifier = Modifier.padding(start = 4.dp, bottom = 16.dp))
         tiles.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth().padding(bottom = 11.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
                 row.forEach { (label, icon) ->
