@@ -480,16 +480,20 @@ private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> U
     Row(Modifier.fillMaxWidth().background(if (folio) PortfolioTint else Color(0xFFEEF1F8)).height(56.dp).padding(start = if (folio) 8.dp else 9.dp, end = if (folio) 12.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
         labels.forEachIndexed { i, t ->
             Text(t, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected == i) Color(0xFF252B35) else Color(0xFF4F5866),
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = if (folio) 4.dp else 7.dp, vertical = 6.dp).testTag("tab_$t"))
+                color = if (selected == i) (if (folio) Color(0xFF1E2630) else Color(0xFF252B35)) else (if (folio) Color(0xFF45505E) else Color(0xFF4F5866)),
+                modifier = Modifier.offset(y = if (folio) 1.dp else 0.dp).clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = if (folio) 4.dp else 7.dp, vertical = 6.dp).testTag("tab_$t"))
         }
         Spacer(Modifier.weight(1f))
         @Composable fun RoundButton(onClick: () -> Unit, tag: String, content: @Composable () -> Unit) =
             Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White).clickable(onClick = onClick).testTag(tag), contentAlignment = Alignment.Center) { content() }
-        onProfile?.let { p -> Icon(NavIcons.person, "Account", Modifier.size(40.dp).clip(CircleShape).clickable(onClick = p).padding(7.dp).testTag("header_profile"), tint = Color(0xFF252B35)); Spacer(Modifier.width(gap)) }
-        RoundButton(onSearch, "orders_search") { Icon(if (folio) NavIcons.search else Icons.Default.Search, "Search", Modifier.size(if (folio) 26.dp else 24.dp), tint = Color(0xFF252B35)) }
+        onProfile?.let { p -> Icon(NavIcons.person, "Account", Modifier.size(40.dp).clip(CircleShape).clickable(onClick = p).padding(8.5.dp).testTag("header_profile"), tint = Color(0xFF252B35)); Spacer(Modifier.width(gap)) }
+        RoundButton(onSearch, "orders_search") { Icon(if (folio) NavIcons.search else Icons.Default.Search, "Search", Modifier.size(if (folio) 23.dp else 24.dp), tint = Color(0xFF252B35)) }
         Spacer(Modifier.width(gap))
-        RoundButton(onMenu, "orders_menu") { Icon(Icons.Default.MoreVert, "More", Modifier.size(24.dp), tint = Color(0xFF252B35)) }
+        RoundButton(onMenu, "orders_menu") {
+            // Portfolio's three dots are spaced wider than the stock icon's.
+            if (folio) androidx.compose.foundation.Canvas(Modifier.size(24.dp)) { listOf(-1f, 0f, 1f).forEach { drawCircle(Color(0xFF252B35), 1.9.dp.toPx(), center.copy(y = center.y + it * 7.2.dp.toPx())) } }
+            else Icon(Icons.Default.MoreVert, "More", Modifier.size(24.dp), tint = Color(0xFF252B35))
+        }
     }
 }
 
@@ -646,17 +650,18 @@ private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit
 @Composable
 private fun BottomBar(section: Section, onSection: (Section) -> Unit, onAccount: () -> Unit) {
     // No hairline: a soft shadow fades up from the bar's top edge instead.
-    Column(Modifier.drawBehind { val h = 5.dp.toPx(); drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.05f)), -h, 0f), androidx.compose.ui.geometry.Offset(0f, -h), androidx.compose.ui.geometry.Size(size.width, h)) }
+    Column(Modifier.drawBehind { val h = 3.dp.toPx(); drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.035f)), -h, 0f), androidx.compose.ui.geometry.Offset(0f, -h), androidx.compose.ui.geometry.Size(size.width, h)) }
         .background(MaterialTheme.colorScheme.surface).navigationBarsPadding()) {
-        // 65 dp: icon centred 20 dp down, label centred 50.5 dp down.
-        Row(Modifier.fillMaxWidth().height(65.dp)) {
+        // 64 dp: icon centred 20 dp down, label centred 51 dp down.
+        Row(Modifier.fillMaxWidth().height(64.dp)) {
             // The selected item swaps to its solid blue icon.
             listOf(Triple(Section.HOME, NavIcons.home, NavIcons.homeSelected), Triple(Section.WATCHLIST, NavIcons.star, NavIcons.starSelected),
                 Triple(Section.PORTFOLIO, NavIcons.folder, NavIcons.folderSelected), Triple(Section.ORDERS, NavIcons.clipboard, NavIcons.clipboardSelected))
                 .forEach { (s, icon, solid) -> val sel = section == s
-                    BottomItem(s.name, if (sel) solid else icon, sel, "bottom_${s.name}", if (s == Section.PORTFOLIO) 26.dp else 24.dp) { onSection(s) }
+                    // Each icon at the size its ink has in the reference.
+                    BottomItem(s.name, if (sel) solid else icon, sel, "bottom_${s.name}", when (s) { Section.HOME -> 25.dp; Section.PORTFOLIO -> 26.dp; else -> 22.dp }) { onSection(s) }
                 }
-            BottomItem("ACCOUNT", NavIcons.wallet, false, "bottom_ACCOUNT", 26.dp, onAccount)
+            BottomItem("ACCOUNT", NavIcons.wallet, false, "bottom_ACCOUNT", 27.dp, onAccount)
         }
     }
 }
@@ -664,8 +669,8 @@ private fun BottomBar(section: Section, onSection: (Section) -> Unit, onAccount:
 @Composable
 private fun RowScope.BottomItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, tag: String, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
     val c = if (selected) Accent else MaterialTheme.colorScheme.onSurface
-    Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick).padding(top = 7.dp).testTag(tag), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(size), tint = if (selected) Color.Unspecified else c) }; Spacer(Modifier.height(11.5.dp))
+    Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick).padding(top = 7.5.dp).testTag(tag), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.requiredSize(size), tint = if (selected) Color.Unspecified else c) }; Spacer(Modifier.height(11.5.dp))
         Text(label, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = c, maxLines = 1, softWrap = false)
     }
 }
