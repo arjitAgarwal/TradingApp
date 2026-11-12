@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -113,8 +114,8 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
         Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
-            // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode.
-            Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
+            // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode and the header's tint on Portfolio.
+            Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else if (section == Section.PORTFOLIO && !searching) PortfolioTint else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
             if (section == Section.ORDERS && !searching) OrdersTabs(ordersTab, { ordersTab = it }, onSearch = { searching = true }, onMenu = nav.account)
             else if (section == Section.PORTFOLIO && !searching) OrdersTabs(portfolioTab, { portfolioTab = it }, onSearch = { searching = true }, onMenu = nav.account, labels = listOf("Holdings", "My Wealth"), onProfile = nav.account)
@@ -474,21 +475,26 @@ private fun WatchRow(label: Pair<String, String>, q: MarketQuote?, onClick: () -
  */
 @Composable
 private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit, onMenu: () -> Unit, labels: List<String> = listOf("Orders", "Positions"), onProfile: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().background(Color(0xFFEEF1F8)).height(56.dp).padding(start = 9.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Portfolio (the one with a profile icon) is a little tighter and paler than Orders, with thin line icons, as in its reference.
+    val folio = onProfile != null; val gap = if (folio) 4.dp else 10.dp
+    Row(Modifier.fillMaxWidth().background(if (folio) PortfolioTint else Color(0xFFEEF1F8)).height(56.dp).padding(start = if (folio) 8.dp else 9.dp, end = if (folio) 12.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
         labels.forEachIndexed { i, t ->
             Text(t, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (selected == i) Color(0xFF252B35) else Color(0xFF4F5866),
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = 7.dp, vertical = 6.dp).testTag("tab_$t"))
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = if (folio) 4.dp else 7.dp, vertical = 6.dp).testTag("tab_$t"))
         }
         Spacer(Modifier.weight(1f))
         @Composable fun RoundButton(onClick: () -> Unit, tag: String, content: @Composable () -> Unit) =
             Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White).clickable(onClick = onClick).testTag(tag), contentAlignment = Alignment.Center) { content() }
-        onProfile?.let { p -> Icon(Icons.Outlined.Person, "Account", Modifier.size(40.dp).clip(CircleShape).clickable(onClick = p).padding(8.dp).testTag("header_profile"), tint = Color(0xFF252B35)); Spacer(Modifier.width(10.dp)) }
-        RoundButton(onSearch, "orders_search") { Icon(Icons.Default.Search, "Search", Modifier.size(24.dp), tint = Color(0xFF252B35)) }
-        Spacer(Modifier.width(10.dp))
+        onProfile?.let { p -> Icon(NavIcons.person, "Account", Modifier.size(40.dp).clip(CircleShape).clickable(onClick = p).padding(7.dp).testTag("header_profile"), tint = Color(0xFF252B35)); Spacer(Modifier.width(gap)) }
+        RoundButton(onSearch, "orders_search") { Icon(if (folio) NavIcons.search else Icons.Default.Search, "Search", Modifier.size(if (folio) 26.dp else 24.dp), tint = Color(0xFF252B35)) }
+        Spacer(Modifier.width(gap))
         RoundButton(onMenu, "orders_menu") { Icon(Icons.Default.MoreVert, "More", Modifier.size(24.dp), tint = Color(0xFF252B35)) }
     }
 }
+
+/** The pale band behind the Portfolio header; the status bar strip takes it too. */
+private val PortfolioTint = Color(0xFFF5F6FB)
 
 /**
  * Quote sheet shown on tapping a watchlist row, an Options-tab strike or a position: "Swipe up for Stock Details" above it, then the
@@ -639,27 +645,28 @@ private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit
 /** HOME, WATCHLIST, PORTFOLIO and ORDERS switch the main page; ACCOUNT opens settings. The selected item is blue, with no pill. */
 @Composable
 private fun BottomBar(section: Section, onSection: (Section) -> Unit, onAccount: () -> Unit) {
-    Column(Modifier.background(MaterialTheme.colorScheme.surface).navigationBarsPadding()) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        // 68 dp: icon centred 19 dp down, label centred 49 dp down.
-        Row(Modifier.fillMaxWidth().height(68.dp)) {
+    // No hairline: a soft shadow fades up from the bar's top edge instead.
+    Column(Modifier.drawBehind { val h = 5.dp.toPx(); drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.05f)), -h, 0f), androidx.compose.ui.geometry.Offset(0f, -h), androidx.compose.ui.geometry.Size(size.width, h)) }
+        .background(MaterialTheme.colorScheme.surface).navigationBarsPadding()) {
+        // 65 dp: icon centred 20 dp down, label centred 50.5 dp down.
+        Row(Modifier.fillMaxWidth().height(65.dp)) {
             // The selected item swaps to its solid blue icon.
             listOf(Triple(Section.HOME, NavIcons.home, NavIcons.homeSelected), Triple(Section.WATCHLIST, NavIcons.star, NavIcons.starSelected),
                 Triple(Section.PORTFOLIO, NavIcons.folder, NavIcons.folderSelected), Triple(Section.ORDERS, NavIcons.clipboard, NavIcons.clipboardSelected))
                 .forEach { (s, icon, solid) -> val sel = section == s
-                    BottomItem(s.name, if (sel) solid else icon, sel, "bottom_${s.name}") { onSection(s) }
+                    BottomItem(s.name, if (sel) solid else icon, sel, "bottom_${s.name}", if (s == Section.PORTFOLIO) 26.dp else 24.dp) { onSection(s) }
                 }
-            BottomItem("ACCOUNT", NavIcons.wallet, false, "bottom_ACCOUNT", onAccount)
+            BottomItem("ACCOUNT", NavIcons.wallet, false, "bottom_ACCOUNT", 26.dp, onAccount)
         }
     }
 }
 
 @Composable
-private fun RowScope.BottomItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, tag: String, onClick: () -> Unit) {
+private fun RowScope.BottomItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, tag: String, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
     val c = if (selected) Accent else MaterialTheme.colorScheme.onSurface
-    Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick).padding(top = 6.dp).testTag(tag), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(icon, null, Modifier.size(26.dp), tint = if (selected) Color.Unspecified else c); Spacer(Modifier.height(11.dp))
-        Text(label, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.Medium, color = c, maxLines = 1, softWrap = false)
+    Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick).padding(top = 7.dp).testTag(tag), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(size), tint = if (selected) Color.Unspecified else c) }; Spacer(Modifier.height(11.5.dp))
+        Text(label, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = c, maxLines = 1, softWrap = false)
     }
 }
 
