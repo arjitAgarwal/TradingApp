@@ -22,8 +22,12 @@ object NavIcons {
         path(stroke = SolidColor(color), strokeLineWidth = width, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round, pathBuilder = body)
 
     /** A solid shape: filled and stroked in [color], so it has the same outline as the line version. */
-    private fun ImageVector.Builder.solid(color: Color = Accent, body: PathBuilder.() -> Unit) =
-        path(fill = SolidColor(color), stroke = SolidColor(color), strokeLineWidth = 1.7f, strokeLineJoin = StrokeJoin.Round, pathBuilder = body)
+    private fun ImageVector.Builder.solid(color: Color = Accent, width: Float = 1.7f, body: PathBuilder.() -> Unit) =
+        path(fill = SolidColor(color), stroke = SolidColor(color), strokeLineWidth = width, strokeLineJoin = StrokeJoin.Round, pathBuilder = body)
+
+    /** An icon drawn in dp units with no margin round it, so its ink can be placed exactly. */
+    private fun tight(name: String, w: Float, h: Float, block: ImageVector.Builder.() -> Unit) =
+        ImageVector.Builder(name, w.dp, h.dp, w, h).apply(block).build()
 
     private fun PathBuilder.roundRect(l: Float, t: Float, r: Float, b: Float, rad: Float) {
         moveTo(l + rad, t); lineTo(r - rad, t); arcTo(rad, rad, 0f, false, true, r, t + rad)
@@ -44,34 +48,35 @@ object NavIcons {
     private fun PathBuilder.door() { moveTo(12f, 15.5f); lineTo(12f, 17.5f) }
 
     private fun PathBuilder.folderShape() {
-        moveTo(3.5f, 6.5f); arcTo(1.5f, 1.5f, 0f, false, true, 5f, 5f); lineTo(9.3f, 5f); lineTo(11.3f, 7.5f); lineTo(19f, 7.5f)
-        arcTo(1.5f, 1.5f, 0f, false, true, 20.5f, 9f); lineTo(20.5f, 18.5f); arcTo(1.5f, 1.5f, 0f, false, true, 19f, 20f)
-        lineTo(5f, 20f); arcTo(1.5f, 1.5f, 0f, false, true, 3.5f, 18.5f); close()
+        moveTo(3.5f, 6.2f); arcTo(1.5f, 1.5f, 0f, false, true, 5f, 4.7f); lineTo(9.3f, 4.7f); lineTo(11.3f, 7.1f); lineTo(19f, 7.1f)
+        arcTo(1.5f, 1.5f, 0f, false, true, 20.5f, 8.6f); lineTo(20.5f, 17.1f); arcTo(1.5f, 1.5f, 0f, false, true, 19f, 18.6f)
+        lineTo(5f, 18.6f); arcTo(1.5f, 1.5f, 0f, false, true, 3.5f, 17.1f); close()
     }
-    private fun PathBuilder.dash() { moveTo(10f, 15f); lineTo(14f, 15f) }
+    private fun PathBuilder.dash() { moveTo(10f, 13.9f); lineTo(14f, 13.9f) }
 
     private fun PathBuilder.rupee() {
         moveTo(7f, 11f); lineTo(11.5f, 11f); moveTo(7f, 12.8f); lineTo(11.5f, 12.8f); moveTo(7.6f, 11f); curveTo(10.6f, 11f, 10.6f, 14.6f, 7.6f, 14.6f); lineTo(10.8f, 17.4f)
     }
 
-    val home = icon("NavHome") { line { house() }; line { door() } }
-    val homeSelected = icon("NavHomeSelected") { solid { house() }; line(color = Color.White) { door() } }
+    // Bottom-bar line widths come to about 1.4 dp on screen at each icon's own size (HOME 25, WATCHLIST and ORDERS 22, PORTFOLIO 26, ACCOUNT 27 dp).
+    val home = icon("NavHome") { line(1.36f) { house() }; line(1.36f) { door() } }
+    val homeSelected = icon("NavHomeSelected") { solid(width = 1.36f) { house() }; line(1.36f, Color.White) { door() } }
 
-    val star = icon("NavStar") { line { roundRect(3.5f, 3.5f, 20.5f, 20.5f, 3f) }; line(1.5f) { star() } }
+    val star = icon("NavStar") { line(1.55f) { roundRect(3.5f, 3.5f, 20.5f, 20.5f, 2f) }; line(1.35f) { star() } }
     val starSelected = icon("NavStarSelected") {
-        path(fill = SolidColor(Accent)) { roundRect(3.5f, 3.5f, 20.5f, 20.5f, 3f) }
+        path(fill = SolidColor(Accent)) { roundRect(3.5f, 3.5f, 20.5f, 20.5f, 2f) }
         path(fill = SolidColor(Color.White), stroke = SolidColor(Color.White), strokeLineWidth = 0.8f, strokeLineJoin = StrokeJoin.Round) { star() }
     }
 
-    val folder = icon("NavFolder") { line { folderShape() }; line { dash() } }
+    val folder = icon("NavFolder") { line(1.4f) { folderShape() }; line(1.4f) { dash() } }
     val folderSelected = icon("NavFolderSelected") { solid { folderShape() }; line(color = Color.White) { dash() } }
 
     val clipboard = icon("NavClipboard") {
-        line {
+        line(1.55f) {
             moveTo(9f, 5f); lineTo(7.5f, 5f); arcTo(2f, 2f, 0f, false, false, 5.5f, 7f); lineTo(5.5f, 19f); arcTo(2f, 2f, 0f, false, false, 7.5f, 21f)
             lineTo(16.5f, 21f); arcTo(2f, 2f, 0f, false, false, 18.5f, 19f); lineTo(18.5f, 7f); arcTo(2f, 2f, 0f, false, false, 16.5f, 5f); lineTo(15f, 5f)
         }
-        line { roundRect(9f, 3f, 15f, 6.5f, 1f) }
+        line(1.55f) { roundRect(9f, 3f, 15f, 6.5f, 1f) }
     }
     /** A solid board with its clip as a notch across the top, as in the reference's selected ORDERS. */
     val clipboardSelected = icon("NavClipboardSelected") {
@@ -80,10 +85,10 @@ object NavIcons {
     }
 
     val wallet = icon("NavWallet") {
-        line { roundRect(3.5f, 7.5f, 19.5f, 20f, 2f) }
-        line { moveTo(6f, 7.5f); lineTo(15f, 4f); lineTo(16.5f, 7.5f) }
-        line { roundRect(14.5f, 11.5f, 21f, 16f, 1.5f) }
-        line(1.5f) { rupee() }
+        line(1.26f) { roundRect(3.5f, 7.5f, 19.5f, 20f, 2f) }
+        line(1.26f) { moveTo(6f, 7.5f); lineTo(15f, 4f); lineTo(16.5f, 7.5f) }
+        line(1.26f) { roundRect(14.5f, 11.5f, 21f, 16f, 1.5f) }
+        line(1.15f) { rupee() }
     }
 
     // Portfolio header and summary card.
@@ -95,8 +100,8 @@ object NavIcons {
     }
 
     private fun PathBuilder.eyeShape() {
-        moveTo(1.5f, 12f); curveTo(5f, 5.6f, 19f, 5.6f, 22.5f, 12f); curveTo(19f, 18.4f, 5f, 18.4f, 1.5f, 12f); close()
-        moveTo(15.2f, 12f); arcTo(3.2f, 3.2f, 0f, true, true, 8.8f, 12f); arcTo(3.2f, 3.2f, 0f, true, true, 15.2f, 12f); close()
+        moveTo(2f, 12f); curveTo(5.5f, 4f, 18.5f, 4f, 22f, 12f); curveTo(18.5f, 20f, 5.5f, 20f, 2f, 12f); close()
+        moveTo(15.4f, 12f); arcTo(3.4f, 3.4f, 0f, true, true, 8.6f, 12f); arcTo(3.4f, 3.4f, 0f, true, true, 15.4f, 12f); close()
     }
     /** A thin outline eye; [eyeOff] has a slash through it. */
     val eye = icon("Eye") { line(1.4f) { eyeShape() } }
@@ -108,9 +113,9 @@ object NavIcons {
         line(2f) { moveTo(7.5f, 10.5f); lineTo(7.5f, 7.5f); arcTo(4.5f, 4.5f, 0f, false, true, 16.5f, 7.5f); lineTo(16.5f, 10.5f) }
     }
 
-    /** Thin line arrows for gain and loss. */
-    val arrowUp = icon("ArrowUp") { line(2f) { moveTo(12f, 21f); lineTo(12f, 3.5f); moveTo(5f, 10.5f); lineTo(12f, 3.5f); lineTo(19f, 10.5f) } }
-    val arrowDown = icon("ArrowDown") { line(2f) { moveTo(12f, 3f); lineTo(12f, 20.5f); moveTo(5f, 13.5f); lineTo(12f, 20.5f); lineTo(19f, 13.5f) } }
+    /** Line arrows for gain and loss, 7.5 x 8.75 dp of ink with no margin (size them a little larger where the reference does). */
+    val arrowUp = tight("ArrowUp", 7.5f, 8.75f) { line(1.4f) { moveTo(3.75f, 8.05f); lineTo(3.75f, 0.7f); moveTo(0.7f, 3.75f); lineTo(3.75f, 0.7f); lineTo(6.8f, 3.75f) } }
+    val arrowDown = tight("ArrowDown", 7.5f, 8.75f) { line(1.4f) { moveTo(3.75f, 0.7f); lineTo(3.75f, 8.05f); moveTo(0.7f, 5f); lineTo(3.75f, 8.05f); lineTo(6.8f, 5f) } }
 
     // Positions toolbar.
 

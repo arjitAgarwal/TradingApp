@@ -324,13 +324,27 @@ private val WealthBottom = androidx.compose.ui.graphics.Color(0xFF1E2A39)
 private val WealthBody = androidx.compose.ui.graphics.Color(0xFF2A394E)
 private val WealthStrip = androidx.compose.ui.graphics.Color(0xFF202B3F)
 private val WealthGain = androidx.compose.ui.graphics.Color(0xFF45B5A0)
-private val WealthLoss = androidx.compose.ui.graphics.Color(0xFFE5646C)
+private val WealthLoss = androidx.compose.ui.graphics.Color(0xFFF16564)
+/** The Portfolio's own loss red and gain green on white (Overview's Assets rows, Equity cards), as measured from the reference. */
+private val AssetLoss = androidx.compose.ui.graphics.Color(0xFFD24B4A)
+private val AssetGain = androidx.compose.ui.graphics.Color(0xFF009175)
+/** [AssetGain], [AssetLoss], or [neutral] for zero and unknown. */
+private fun pnlInk(v: BigDecimal?, neutral: androidx.compose.ui.graphics.Color) = when { v == null || v.signum() == 0 -> neutral; v.signum() > 0 -> AssetGain; else -> AssetLoss }
 
-/** Portfolio text inks in the light theme: near-black titles and dark slate second lines. Dark theme falls back to the scheme. */
-@Composable private fun titleInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color(0xFF1F2329)
-@Composable private fun subInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurfaceVariant else androidx.compose.ui.graphics.Color(0xFF50555B)
+/** The warm, faint tint of the summary card's diagonal band. */
+private val BandTint = androidx.compose.ui.graphics.Color(0xFFF8DEAE)
+
+/** Portfolio text inks in the light theme: near-black titles, blue-slate second lines and tab labels. Dark theme falls back to the scheme. */
+@Composable private fun titleInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color(0xFF182028)
+@Composable private fun subInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurfaceVariant else androidx.compose.ui.graphics.Color(0xFF46535D)
+@Composable private fun tabInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color(0xFF414E5F)
+/** Equity card inks in the light theme: dark slate values and grey ATP / LTP labels. */
+@Composable private fun cardInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color(0xFF2E3940)
+@Composable private fun labelInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurfaceVariant else androidx.compose.ui.graphics.Color(0xFF69737A)
+/** The pale page colour behind the Equity list and between the Overview's white blocks. */
+@Composable private fun paleBg() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceVariant else androidx.compose.ui.graphics.Color(0xFFF5F6FB)
 /** The thin pale strip between the white blocks of the Overview page. */
-@Composable private fun BlockGap() = Spacer(Modifier.fillMaxWidth().height(6.dp).background(if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceVariant else androidx.compose.ui.graphics.Color(0xFFF5F6FB)))
+@Composable private fun BlockGap() = Spacer(Modifier.fillMaxWidth().height(6.dp).background(paleBg()))
 private val PageGrey = androidx.compose.ui.graphics.Color(0xFFF2F4F8)
 
 /** Totals for one asset class: what was paid, what it is worth now, and today's move (null when no previous close is known). */
@@ -364,7 +378,8 @@ fun HoldingsScreen(vm: AppVM, nav: Nav) {
             HoldTab.values().forEach { t -> val on = t == tab
                 Box(Modifier.clickable { tab = t }.widthIn(min = 72.dp).height(48.dp).padding(horizontal = 12.dp).testTag("hold_tab_${t.name}"), contentAlignment = Alignment.Center) {
                     Column(Modifier.width(IntrinsicSize.Max).fillMaxHeight()) {
-                        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text(t.label, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false, color = if (on) Accent else MaterialTheme.colorScheme.onSurface) }
+                        // The label sits a little below the middle of the row, as in the reference.
+                        Box(Modifier.weight(1f).fillMaxWidth().padding(top = 4.5.dp), contentAlignment = Alignment.Center) { Text(t.label, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false, color = if (on) Accent else tabInk()) }
                         Box(Modifier.fillMaxWidth().height(2.dp).background(if (on) Accent else Color.Transparent))
                     }
                 }
@@ -397,16 +412,17 @@ private fun HoldingsOverview(eq: AssetSum, mf: AssetSum, hasEq: Boolean, hasMf: 
     var todayView by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).verticalScroll(rememberScrollState())) {
         WealthCard(eq.current + mf.current, eq.invested + mf.invested, eq.today, hidden, onEye, onAnalyze = null, onVerify = onSoon, todayOn = eq.current)
-        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 7.dp, bottom = 1.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 11.5.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Assets", fontSize = 12.sp, lineHeight = 16.sp, color = subInk(), modifier = Modifier.weight(1f))
-            Row(Modifier.clip(RoundedCornerShape(4.dp)).clickable { todayView = !todayView }.padding(vertical = 1.dp).testTag("assets_switch"), verticalAlignment = Alignment.CenterVertically) {
-                SwitchArrows(); Spacer(Modifier.width(8.dp))
+            // The switch rides 2 dp above the "Assets" line.
+            Row(Modifier.offset(y = (-2).dp).clip(RoundedCornerShape(4.dp)).clickable { todayView = !todayView }.padding(vertical = 1.dp).testTag("assets_switch"), verticalAlignment = Alignment.CenterVertically) {
+                SwitchArrows(); Spacer(Modifier.width(7.dp))
                 Text(if (todayView) "Today's Gain/Loss" else "Overall Gain/Loss", fontSize = 10.sp, lineHeight = 14.sp, color = subInk())
             }
         }
         AssetRow({ EquityIcon() }, "EQUITY", eq, hasEq, todayView, hidden, "Buy stocks for delivery, or add ones you own", "ADD STOCK", { onAdd(AddKind.STOCK) }, onEquity, "asset_equity")
         HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
-        AssetRow({ FundIcon() }, "MUTUAL FUNDS", mf, hasMf, todayView, hidden, "Track funds you already hold", "ADD FUND", { onAdd(AddKind.FUND) }, onFunds, "asset_funds")
+        AssetRow({ FundIcon() }, "MUTUAL FUNDS", mf, hasMf, todayView, hidden, "Start SIPs with just ", "ADD FUND", { onAdd(AddKind.FUND) }, onFunds, "asset_funds", emptyStrong = "₹500")
         BlockGap()
         PromoRow({ MtfIcon() }, "MTF Borrowing", "Maximize your gains by 4x", "GET STARTED", onSoon, "promo_mtf")
         BlockGap()
@@ -422,8 +438,8 @@ private fun HoldingsOverview(eq: AssetSum, mf: AssetSum, hasEq: Boolean, hasMf: 
 /** The ◀ ▶ pair beside "Overall Gain/Loss": two solid triangles. */
 @Composable
 private fun SwitchArrows() { val c = subInk()
-    androidx.compose.foundation.Canvas(Modifier.size(width = 18.dp, height = 10.dp)) {
-        val w = size.width; val h = size.height; val t = 5.6.dp.toPx()
+    androidx.compose.foundation.Canvas(Modifier.offset(y = (-0.5).dp).size(width = 18.7.dp, height = 10.5.dp)) {
+        val w = size.width; val h = size.height; val t = 6.2.dp.toPx()
         drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(t, 0f); lineTo(t, h); lineTo(0f, h / 2); close() }, c)
         drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(w - t, 0f); lineTo(w - t, h); lineTo(w, h / 2); close() }, c)
     }
@@ -440,6 +456,7 @@ private fun SmallOutlined(label: String, onClick: () -> Unit) { val shape = Roun
 /**
  * The dark summary card shared by Overview and Equity: current value with the eye (hides amounts), overall gain or loss, invested value
  * and today's gain or loss, arrows in green or red. A darker strip at the bottom holds ANALYZE (Equity only) and VERIFY TO SELL, both look only.
+ * On the Equity card a gain today is written "+ ₹…", as in the reference.
  */
 @Composable
 private fun WealthCard(current: BigDecimal, invested: BigDecimal, today: BigDecimal?, hidden: Boolean, onEye: () -> Unit, onAnalyze: (() -> Unit)?, onVerify: () -> Unit, todayOn: BigDecimal = current) {
@@ -451,38 +468,40 @@ private fun WealthCard(current: BigDecimal, invested: BigDecimal, today: BigDeci
     fun pctText(v: BigDecimal) = "(" + Fmt.pct(v) + ")"
     val white = Color.White; val loss = overall.signum() < 0; val down = (today ?: BigDecimal.ZERO).signum() < 0
     val oc = if (loss) WealthLoss else WealthGain; val tc = if (down) WealthLoss else WealthGain
-    Column(Modifier.padding(8.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(WealthBody).testTag("wealth_card")) {
+    // An amount in its colour with its white percentage after it, as one line so the two share a baseline.
+    fun withPct(amount: String, ink: Color, pct: BigDecimal?) = buildAnnotatedString {
+        withStyle(SpanStyle(color = ink)) { append(amount) }
+        pct?.let { withStyle(SpanStyle(letterSpacing = 1.25.sp)) { append(" ") }; withStyle(SpanStyle(fontSize = 12.sp)) { append(pctText(it)) } }
+    }
+    Column(Modifier.padding(8.dp).fillMaxWidth().clip(RoundedCornerShape(7.dp)).background(WealthBody).testTag("wealth_card")) {
         Column(Modifier.fillMaxWidth()
-            .drawBehind { // the faint diagonal band: strongest at the top, gone before the strip
+            .drawBehind { // the faint warm diagonal band: strongest at the top, almost gone where the strip starts
                 val w = size.width; val h = size.height
                 drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(0.36f * w, 0f); lineTo(0.62f * w, 0f); lineTo(0.835f * w, h); lineTo(0.575f * w, h); close() },
-                    androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.Transparent), 0f, 0.85f * h))
-            }.padding(start = 14.dp, end = 12.dp, top = 15.dp, bottom = 16.dp)) {
+                    androidx.compose.ui.graphics.Brush.verticalGradient(listOf(BandTint.copy(alpha = 0.078f), Color.Transparent), 0f, 1.19f * h))
+            }.padding(start = 14.dp, end = 12.dp, top = 15.dp, bottom = 15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(amt(current, 0), fontSize = 18.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, color = white, modifier = Modifier.testTag("wealth_current"))
                 Spacer(Modifier.width(4.dp))
                 Icon(if (hidden) NavIcons.eyeOff else NavIcons.eye, if (hidden) "Show amounts" else "Hide amounts", Modifier.size(18.dp).clip(RoundedCornerShape(50)).clickable(onClick = onEye).testTag("wealth_eye"), tint = white)
             }
+            // The arrow's ink starts where the text's ink does (1 dp in); amount and percent sit 1 dp below the label's line.
             Row(Modifier.height(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (loss) NavIcons.arrowDown else NavIcons.arrowUp, null, Modifier.size(12.dp), tint = oc); Spacer(Modifier.width(3.dp))
-                Text("Overall " + (if (loss) "Loss" else "Gain"), fontSize = 12.sp, lineHeight = 16.sp, color = white); Spacer(Modifier.width(4.dp))
-                Text(amt(overall), fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = oc); Spacer(Modifier.width(6.dp))
-                Text(pctText(overallPct), fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = white)
+                Spacer(Modifier.width(1.dp)); Icon(if (loss) NavIcons.arrowDown else NavIcons.arrowUp, null, Modifier.offset(y = 0.5.dp).size(width = 7.5.dp, height = 8.75.dp), tint = oc); Spacer(Modifier.width(3.5.dp))
+                Text("Overall " + (if (loss) "Loss" else "Gain"), fontSize = 12.sp, lineHeight = 16.sp, color = white); Spacer(Modifier.width(3.5.dp))
+                Text(withPct(amt(overall), oc, overallPct), fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = white, maxLines = 1, softWrap = false, modifier = Modifier.offset(y = 1.dp))
             }
             Row(Modifier.padding(top = 10.dp)) {
-                Column(Modifier.weight(1f)) { Text("Invested Value", fontSize = 12.sp, lineHeight = 16.sp, color = white); Text(amt(invested, 0), fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = white) }
+                Column(Modifier.weight(1f)) { Text("Invested Value", fontSize = 12.sp, lineHeight = 16.sp, color = white); Text(amt(invested, 0), fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = white, modifier = Modifier.padding(top = 1.dp)) }
                 Column(horizontalAlignment = Alignment.End) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { Icon(if (down) NavIcons.arrowDown else NavIcons.arrowUp, null, Modifier.size(13.dp), tint = tc); Spacer(Modifier.width(3.dp)); Text("Today's " + (if (down) "Loss" else "Gain"), fontSize = 12.sp, lineHeight = 16.sp, color = white) }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(today?.let { amt(it) } ?: "—", fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = tc, modifier = Modifier.testTag("wealth_today"))
-                        todayPct?.let { Spacer(Modifier.width(6.dp)); Text(pctText(it), fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = white) }
-                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Icon(if (down) NavIcons.arrowDown else NavIcons.arrowUp, null, Modifier.size(width = 8.1.dp, height = 9.4.dp), tint = tc); Spacer(Modifier.width(3.dp)); Text("Today's " + (if (down) "Loss" else "Gain"), fontSize = 12.sp, lineHeight = 16.sp, color = white) }
+                    Text(withPct(today?.let { (if (onAnalyze != null && !hidden && it.signum() > 0) "+ " else "") + amt(it) } ?: "—", tc, todayPct), fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = white, maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 1.dp).testTag("wealth_today"))
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().background(WealthStrip).padding(start = 14.dp, end = 20.dp, top = 8.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().background(WealthStrip).padding(start = 14.dp, end = 20.dp, top = 8.dp, bottom = 11.5.dp), verticalAlignment = Alignment.CenterVertically) {
             onAnalyze?.let { a -> Row(Modifier.clickable(onClick = a).testTag("analyze"), verticalAlignment = Alignment.CenterVertically) {
-                PulseIcon(); Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(1.dp)); PulseIcon(); Spacer(Modifier.width(4.5.dp))
                 Text("ANALYZE", fontSize = 12.sp, lineHeight = 16.sp, color = VerifyCyan)
             } }
             Spacer(Modifier.weight(1f))
@@ -495,8 +514,9 @@ private fun WealthCard(current: BigDecimal, invested: BigDecimal, today: BigDeci
 }
 
 /**
- * Equity tab: the summary card for stocks alone (with ANALYZE), a search box with a filter button, one raised card per stock
- * ("qty X ATP avg", P&L with %, LTP with the day's %), and the look-only TPIN strip pinned at the bottom.
+ * Equity tab: the summary card for stocks alone (with ANALYZE) on white, then on a pale page a search box with a filter button, one
+ * raised card per stock held ("qty X ATP avg", P&L with %, LTP with the day's %), closed stocks faded under INACTIVE STOCKS, and the
+ * look-only TPIN strip pinned at the bottom.
  */
 @Composable
 private fun EquityTab(holdings: List<Position>, eq: AssetSum, quotes: Map<String, com.papertrade.app.data.market.MarketQuote>, v: PortfolioValuation?, hidden: Boolean, onEye: () -> Unit,
@@ -504,61 +524,70 @@ private fun EquityTab(holdings: List<Position>, eq: AssetSum, quotes: Map<String
     var query by rememberSaveable { mutableStateOf("") }
     fun name(p: Position) = p.instrumentId.substringAfter(':').removeSuffix("-EQ")
     val shown = holdings.filter { query.isBlank() || name(it).contains(query.trim(), ignoreCase = true) }
-    Column(Modifier.fillMaxSize().background(PageGrey)) {
+    val active = shown.filter { it.isOpen }; val inactive = shown.filter { !it.isOpen }
+    val ink = cardInk(); val label = labelInk()
+    // One stock: 72.5 dp tall, the two lines sitting below the middle as in the reference.
+    val stockCard: @Composable (Position) -> Unit = { p ->
+        val q = quotes[p.instrumentId]
+        val pnl = if (p.isOpen) Dec.money(((q?.ltp ?: p.avgPrice) - p.avgPrice) * BigDecimal(p.quantity)) else p.realizedGross
+        val cost = Dec.money(p.avgPrice * BigDecimal(p.quantity)); val pnlPct = if (p.isOpen && cost.signum() != 0) Dec.div(pnl * BigDecimal(100), cost) else null
+        val day = q?.changePct ?: q?.prevClose?.takeIf { it.signum() != 0 }?.let { pc -> Dec.div((q.ltp - pc) * BigDecimal(100), pc) }
+        Card(Modifier.padding(horizontal = 8.dp, vertical = 4.5.dp).fillMaxWidth().alpha(if (p.isOpen) 1f else 0.5f).clickable { nav.stock(p.instrumentId) }.testTag("holding_${p.instrumentId}"),
+            shape = RoundedCornerShape(6.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 19.dp, bottom = 10.5.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(name(p), fontSize = 16.sp, lineHeight = 20.sp, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Text(if (hidden) "₹ ••••" else Fmt.rupee(pnl), fontSize = 16.sp, lineHeight = 20.sp, color = pnlInk(pnl, ink), maxLines = 1)
+                    pnlPct?.let { Text(" (" + Fmt.pct(it) + ")", fontSize = 12.sp, lineHeight = 16.sp, color = ink, maxLines = 1, modifier = Modifier.padding(start = 1.dp)) }
+                }
+                Row(Modifier.padding(top = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${p.quantity} X ", fontSize = 12.sp, lineHeight = 16.sp, color = ink); Text("ATP ", fontSize = 12.sp, lineHeight = 16.sp, color = label)
+                    Text(Fmt.rupee(p.avgPrice), fontSize = 12.sp, lineHeight = 16.sp, color = ink, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text("LTP ", fontSize = 12.sp, lineHeight = 16.sp, color = label)
+                    Text(Fmt.rupee(q?.ltp), fontSize = 12.sp, lineHeight = 16.sp, color = pnlInk(day, ink))
+                    day?.let { Text(" (" + Fmt.pct(it) + ")", fontSize = 12.sp, lineHeight = 16.sp, color = ink) }
+                }
+            }
+        }
+    }
+    Column(Modifier.fillMaxSize().background(paleBg())) {
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp)) {
-            item(key = "card") { WealthCard(eq.current, eq.invested, eq.today, hidden, onEye, onAnalyze = onSoon, onVerify = onSoon) }
+            item(key = "card") { Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) { WealthCard(eq.current, eq.invested, eq.today, hidden, onEye, onAnalyze = onSoon, onVerify = onSoon) } }
             item(key = "search") {
-                Row(Modifier.padding(horizontal = 8.dp).padding(bottom = 10.dp).fillMaxWidth().height(56.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Search, null, Modifier.padding(start = 14.dp).size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Box(Modifier.weight(1f).padding(horizontal = 10.dp), contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text("Search stocks by company", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        androidx.compose.foundation.text.BasicTextField(query, { query = it }, singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface),
+                // 48 dp: thin ring icon, 14 sp text, a square filter cell.
+                Row(Modifier.padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 7.5.dp).fillMaxWidth().height(48.dp).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp)), verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(13.dp)); SearchRing(); Spacer(Modifier.width(6.5.dp))
+                    Box(Modifier.weight(1f).padding(end = 10.dp), contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) Text("Search stocks by company", fontSize = 14.sp, lineHeight = 18.sp, color = subInk(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        androidx.compose.foundation.text.BasicTextField(query, { query = it }, singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurface),
                             cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent), modifier = Modifier.fillMaxWidth().testTag("equity_search"))
                     }
                     VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Box(Modifier.size(56.dp).clickable(onClick = onSoon).testTag("equity_filter"), contentAlignment = Alignment.Center) { FilterIcon() }
+                    Box(Modifier.size(48.dp).clickable(onClick = onSoon).testTag("equity_filter"), contentAlignment = Alignment.Center) { FilterIcon() }
                 }
             }
-            items(shown, key = { it.instrumentId }) { p ->
-                val q = quotes[p.instrumentId]
-                val pnl = if (p.isOpen) Dec.money(((q?.ltp ?: p.avgPrice) - p.avgPrice) * BigDecimal(p.quantity)) else p.realizedGross
-                val cost = Dec.money(p.avgPrice * BigDecimal(p.quantity)); val pnlPct = if (p.isOpen && cost.signum() != 0) Dec.div(pnl * BigDecimal(100), cost) else null
-                val day = q?.changePct ?: q?.prevClose?.takeIf { it.signum() != 0 }?.let { pc -> Dec.div((q.ltp - pc) * BigDecimal(100), pc) }
-                Card(Modifier.padding(horizontal = 16.dp, vertical = 5.dp).fillMaxWidth().alpha(if (p.isOpen) 1f else 0.5f).clickable { nav.stock(p.instrumentId) }.testTag("holding_${p.instrumentId}"),
-                    shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(name(p), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            Text(if (hidden) "₹ ••••" else Fmt.rupee(pnl), fontSize = 17.sp, color = Fmt.color(pnl, MaterialTheme.colorScheme.onSurface))
-                            pnlPct?.let { Text(" (" + Fmt.pct(it) + ")", fontSize = 14.sp) }
-                        }
-                        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("${p.quantity} X ", fontSize = 14.sp); Text("ATP ", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(Fmt.rupee(p.avgPrice), fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Text("LTP ", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(Fmt.rupee(q?.ltp), fontSize = 14.sp, color = Fmt.color(day, MaterialTheme.colorScheme.onSurface))
-                            day?.let { Text(" (" + Fmt.pct(it) + ")", fontSize = 14.sp) }
-                        }
-                    }
-                }
+            items(active, key = { it.instrumentId }) { p -> stockCard(p) }
+            if (inactive.isNotEmpty()) {
+                item(key = "inactive_header") { Text("INACTIVE STOCKS", fontSize = 14.sp, lineHeight = 18.sp, color = label, modifier = Modifier.padding(start = 14.dp, top = 15.dp, bottom = 7.5.dp).testTag("inactive_header")) }
+                items(inactive, key = { it.instrumentId }) { p -> stockCard(p) }
             }
             if (shown.isEmpty()) item(key = "none") { Text("No stocks match", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
             item(key = "add_stock") { TextButton(onAdd, Modifier.padding(horizontal = 8.dp).testTag("holdings_add_stock")) { Text("+ Add a stock you already own") } }
         }
         // Pinned reminder strip, as in the reference. Look only for now.
-        Row(Modifier.fillMaxWidth().background(TpinBg).clickable(onClick = onSoon).padding(horizontal = 12.dp, vertical = 12.dp).testTag("tpin_strip"), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(20.dp).clip(RoundedCornerShape(50)).background(TpinPurple), contentAlignment = Alignment.Center) { Text("!", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White) }
-            Spacer(Modifier.width(12.dp))
-            Text("Sell stocks without entering TPIN every time", fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 0.dp))
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(24.dp))
+        Row(Modifier.fillMaxWidth().height(39.5.dp).background(TpinBg).clickable(onClick = onSoon).padding(start = 17.dp, end = 21.5.dp, top = 2.dp).testTag("tpin_strip"), verticalAlignment = Alignment.CenterVertically) {
+            TpinMark(); Spacer(Modifier.width(8.5.dp))
+            Text("Sell stocks without entering TPIN every time", fontSize = 12.sp, lineHeight = 16.sp, color = TpinInk, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Chevron()
         }
     }
 }
 
 private val TpinBg = androidx.compose.ui.graphics.Color(0xFFEAE4F7)
-private val TpinPurple = androidx.compose.ui.graphics.Color(0xFF6A2FD0)
-private val VerifyCyan = androidx.compose.ui.graphics.Color(0xFF3FC6DE)
+private val TpinPurple = androidx.compose.ui.graphics.Color(0xFF581EBC)
+private val TpinInk = androidx.compose.ui.graphics.Color(0xFF2A2E3C)
+private val VerifyCyan = androidx.compose.ui.graphics.Color(0xFF2FC3D6)
 private val IconInk = androidx.compose.ui.graphics.Color(0xFF2F3A52)
 private val CandleRed = androidx.compose.ui.graphics.Color(0xFFD0504F)
 private val CandleGreen = androidx.compose.ui.graphics.Color(0xFF2EB67D)
@@ -624,11 +653,11 @@ private fun SipIcon() = androidx.compose.foundation.Canvas(Modifier.size(width =
 private fun PromoRow(icon: @Composable () -> Unit, title: String, line: String, button: String, onClick: () -> Unit, tag: String) {
     Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).height(64.dp).padding(horizontal = 12.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(40.dp), contentAlignment = Alignment.Center) { icon() }; Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f).padding(bottom = 3.dp)) {
+        Column(Modifier.weight(1f).padding(bottom = 3.5.dp)) {
             Text(title, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = titleInk(), maxLines = 1)
-            Text(line, fontSize = 12.sp, lineHeight = 16.sp, color = subInk(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(line, fontSize = 12.sp, lineHeight = 16.sp, color = subInk(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 0.5.dp))
         }
-        SmallOutlined(button, onClick)
+        Box(Modifier.offset(y = (-0.5).dp)) { SmallOutlined(button, onClick) }
     }
 }
 
@@ -637,7 +666,7 @@ private fun PromoRow(icon: @Composable () -> Unit, title: String, line: String, 
 private fun ToolsGrid(onClick: () -> Unit) {
     val tiles = listOf("Buy Back" to Icons.Outlined.Autorenew, "Edit Buy Price" to Icons.Outlined.InsertDriveFile, "Profit & Loss" to Icons.Outlined.BarChart,
         "Tax Report" to Icons.Outlined.Description, "Trades and Charges" to Icons.Outlined.Receipt, "Stock SIP" to Icons.Outlined.Spa)
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 16.dp).testTag("tools")) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(start = 12.dp, end = 12.dp, top = 11.5.dp, bottom = 16.dp).testTag("tools")) {
         Text("AngelOne Tools", fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = titleInk(), modifier = Modifier.padding(start = 4.dp, bottom = 16.dp))
         tiles.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth().padding(bottom = 11.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
@@ -695,23 +724,30 @@ private fun NewsStrip(movers: List<Pair<String, BigDecimal?>>, onClick: () -> Un
     }
 }
 
-/** One Assets row: invested value and gain on the right, or a short line and an outlined button when nothing is held yet. */
+/**
+ * One Assets row: invested value and gain on the right, or a short dark line ([emptyText], then [emptyStrong] in Medium) and an
+ * outlined button when nothing is held yet.
+ */
 @Composable
 private fun AssetRow(icon: @Composable () -> Unit, title: String, s: AssetSum, has: Boolean, todayView: Boolean, hidden: Boolean,
-                     emptyText: String, button: String, onButton: () -> Unit, onOpen: () -> Unit, tag: String) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = has, onClick = onOpen).padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 12.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(width = 40.dp, height = 36.dp), contentAlignment = Alignment.Center) { icon() }; Spacer(Modifier.width(8.dp))
+                     emptyText: String, button: String, onButton: () -> Unit, onOpen: () -> Unit, tag: String, emptyStrong: String = "") {
+    // 66 dp either way. With holdings the second line sits 4.5 dp under the title; the empty line sits 2.5 dp under it and the whole
+    // block rides a little higher. The icon sits above the middle in both.
+    Row(Modifier.fillMaxWidth().clickable(enabled = has, onClick = onOpen).padding(start = 12.dp, end = 12.dp, top = if (has) 16.dp else 15.5.dp, bottom = if (has) 11.5.dp else 14.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.offset(y = if (has) (-3).dp else (-2).dp).size(width = 40.dp, height = 36.dp), contentAlignment = Alignment.Center) { icon() }; Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = titleInk(), maxLines = 1)
             val ink = titleInk()
-            Text(if (has) buildAnnotatedString { append("Invested Value "); withStyle(SpanStyle(color = ink)) { append(if (hidden) "₹ ••••" else Fmt.rupee(s.invested, 0)) } } else androidx.compose.ui.text.AnnotatedString(emptyText),
-                fontSize = 12.sp, lineHeight = 16.sp, color = subInk(), maxLines = if (has) 1 else 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+            Text(if (has) buildAnnotatedString { append("Invested Value "); withStyle(SpanStyle(color = ink)) { append(if (hidden) "₹ ••••" else Fmt.rupee(s.invested, 0)) } }
+                else buildAnnotatedString { append(emptyText); withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(emptyStrong) } },
+                fontSize = 12.sp, lineHeight = 16.sp, color = if (has) subInk() else ink, maxLines = if (has) 1 else 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = if (has) 4.5.dp else 2.5.dp))
         }
         if (has) Column(horizontalAlignment = Alignment.End) {
             val v = if (todayView) s.today else s.pnl
-            Text(v?.let { if (hidden) "₹ ••••" else signedRupee(it) } ?: "—", fontSize = 14.sp, lineHeight = 18.sp, color = Fmt.color(v, MaterialTheme.colorScheme.onSurface))
-            if (v != null && !todayView) Text(Fmt.pct(s.pct(v)), fontSize = 12.sp, lineHeight = 16.sp, color = Fmt.color(v, MaterialTheme.colorScheme.onSurface), modifier = Modifier.padding(top = 4.dp))
-        } else { Spacer(Modifier.width(8.dp)); SmallOutlined(button, onButton) }
+            val pnlInk = pnlInk(v, MaterialTheme.colorScheme.onSurface)
+            Text(v?.let { if (hidden) "₹ ••••" else signedRupee(it) } ?: "—", fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium, color = pnlInk)
+            if (v != null && !todayView) Text(Fmt.pct(s.pct(v)), fontSize = 12.sp, lineHeight = 16.sp, color = pnlInk, modifier = Modifier.padding(top = 4.5.dp).offset(y = 0.5.dp))
+        } else { Spacer(Modifier.width(8.dp)); Box(Modifier.offset(y = (-1).dp)) { SmallOutlined(button, onButton) } }
     }
 }
 
@@ -948,23 +984,51 @@ private fun IntField(label: String, value: Int, onChange: (Int) -> Unit) {
 }
 private typealias Color = androidx.compose.ui.graphics.Color
 
-/** ANALYZE mark: a bare pulse line (flat, a dip, a spike, flat), as in the reference. */
+/** ANALYZE mark: a small bare pulse line (flat, a dip, a spike, flat), as in the reference. */
 @Composable
-private fun PulseIcon() = androidx.compose.foundation.Canvas(Modifier.size(width = 22.dp, height = 16.dp)) {
-    val w = size.width; val h = size.height
-    val pts = listOf(0f to 0.62f, 0.28f to 0.62f, 0.4f to 0.95f, 0.56f to 0.05f, 0.7f to 0.62f, 1f to 0.62f).map { (x, y) -> androidx.compose.ui.geometry.Offset(x * w, y * h) }
+private fun PulseIcon() = androidx.compose.foundation.Canvas(Modifier.size(width = 13.75.dp, height = 12.dp)) {
+    val w = size.width; val h = size.height; val sw = 1.6.dp.toPx()
+    val pts = listOf(0f to 0.52f, 0.24f to 0.52f, 0.38f to 0.93f, 0.61f to 0.07f, 0.77f to 0.52f, 1f to 0.52f).map { (x, y) -> androidx.compose.ui.geometry.Offset(x * w, y * h) }
     drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(pts[0].x, pts[0].y); pts.drop(1).forEach { lineTo(it.x, it.y) } }, VerifyCyan,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(1.8.dp.toPx(), join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        style = androidx.compose.ui.graphics.drawscope.Stroke(sw, join = androidx.compose.ui.graphics.StrokeJoin.Round))
 }
 
-/** Filter mark: three grey sliders with flat knobs (outer two low, middle high); each line breaks around its knob. */
+/** Search mark of the Equity box: a thin pale ring with a short handle. */
 @Composable
-private fun FilterIcon() = androidx.compose.foundation.Canvas(Modifier.size(26.dp)) {
-    val w = size.width; val h = size.height; val c = androidx.compose.ui.graphics.Color(0xFF6B7380); val lw = 2.dp.toPx(); val kw = 5.5.dp.toPx(); val kh = 3.dp.toPx(); val gap = 2.dp.toPx()
-    listOf(0.17f to 0.68f, 0.5f to 0.32f, 0.83f to 0.68f).forEach { (x, k) ->
-        val cx = x * w; val ky = k * h
-        drawLine(c, androidx.compose.ui.geometry.Offset(cx, 0.1f * h), androidx.compose.ui.geometry.Offset(cx, ky - kh / 2 - gap), lw)
-        drawLine(c, androidx.compose.ui.geometry.Offset(cx, ky + kh / 2 + gap), androidx.compose.ui.geometry.Offset(cx, 0.9f * h), lw)
+private fun SearchRing() { val c = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurfaceVariant else androidx.compose.ui.graphics.Color(0xFFA3A9AE)
+    androidx.compose.foundation.Canvas(Modifier.size(width = 14.5.dp, height = 17.dp)) {
+        val sw = 1.3.dp.toPx()
+        drawCircle(c, 6.55.dp.toPx(), androidx.compose.ui.geometry.Offset(7.2.dp.toPx(), 7.2.dp.toPx()), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+        drawLine(c, androidx.compose.ui.geometry.Offset(11.7.dp.toPx(), 12.1.dp.toPx()), androidx.compose.ui.geometry.Offset(13.9.dp.toPx(), 16.3.dp.toPx()), sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    }
+}
+
+/** TPIN mark: a small purple octagon with a white exclamation mark. */
+@Composable
+private fun TpinMark() = androidx.compose.foundation.Canvas(Modifier.size(14.5.dp)) {
+    val s = size.minDimension; val e = 0.6.dp.toPx(); val a = e + (s - 2 * e) * 0.293f; val f = s - e
+    val oct = androidx.compose.ui.graphics.Path().apply { moveTo(a, e); lineTo(s - a, e); lineTo(f, a); lineTo(f, s - a); lineTo(s - a, f); lineTo(a, f); lineTo(e, s - a); lineTo(e, a); close() }
+    drawPath(oct, TpinPurple); drawPath(oct, TpinPurple, style = androidx.compose.ui.graphics.drawscope.Stroke(2 * e, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+    drawLine(androidx.compose.ui.graphics.Color.White, androidx.compose.ui.geometry.Offset(s / 2, 0.27f * s), androidx.compose.ui.geometry.Offset(s / 2, 0.56f * s), 1.5.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawCircle(androidx.compose.ui.graphics.Color.White, 0.85.dp.toPx(), androidx.compose.ui.geometry.Offset(s / 2, 0.735f * s))
+}
+
+/** The thin dark chevron at the end of the TPIN strip. */
+@Composable
+private fun Chevron() = androidx.compose.foundation.Canvas(Modifier.offset(y = (-1).dp).size(width = 5.6.dp, height = 10.dp)) {
+    val w = size.width; val h = size.height; val sw = 1.4.dp.toPx(); val i = sw / 2
+    drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(i, i); lineTo(w - i, h / 2); lineTo(i, h - i) }, androidx.compose.ui.graphics.Color(0xFF1C1828),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(sw, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+}
+
+/** Filter mark: three small dark sliders with flat knobs (outer two low, middle high); each line breaks around its knob. */
+@Composable
+private fun FilterIcon() = androidx.compose.foundation.Canvas(Modifier.size(width = 15.dp, height = 12.5.dp)) {
+    val h = size.height; val c = androidx.compose.ui.graphics.Color(0xFF50565C); val lw = 1.2.dp.toPx(); val kw = 3.75.dp.toPx(); val kh = 1.6.dp.toPx(); val gap = 0.9.dp.toPx()
+    listOf(1.9.dp.toPx() to 0.68f, 7.5.dp.toPx() to 0.32f, 13.1.dp.toPx() to 0.68f).forEach { (cx, k) ->
+        val ky = k * h
+        drawLine(c, androidx.compose.ui.geometry.Offset(cx, 0f), androidx.compose.ui.geometry.Offset(cx, ky - kh / 2 - gap), lw)
+        drawLine(c, androidx.compose.ui.geometry.Offset(cx, ky + kh / 2 + gap), androidx.compose.ui.geometry.Offset(cx, h), lw)
         drawRect(c, androidx.compose.ui.geometry.Offset(cx - kw / 2, ky - kh / 2), androidx.compose.ui.geometry.Size(kw, kh))
     }
 }
