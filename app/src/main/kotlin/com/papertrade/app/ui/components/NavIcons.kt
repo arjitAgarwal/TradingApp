@@ -37,9 +37,9 @@ object NavIcons {
         lineTo(12f, 14.2f); lineTo(9.06f, 16.05f); lineTo(9.91f, 12.68f); lineTo(7.24f, 10.45f); lineTo(10.71f, 10.22f); close()
     }
 
+    /** A pentagon house: pointed roof, sides tapering in to a flat base. */
     private fun PathBuilder.house() {
-        moveTo(4f, 10.2f); lineTo(11.1f, 4.6f); arcTo(1.5f, 1.5f, 0f, false, true, 12.9f, 4.6f); lineTo(20f, 10.2f)
-        lineTo(20f, 18.5f); arcTo(1.5f, 1.5f, 0f, false, true, 18.5f, 20f); lineTo(5.5f, 20f); arcTo(1.5f, 1.5f, 0f, false, true, 4f, 18.5f); close()
+        moveTo(4.2f, 10.4f); lineTo(12f, 4.4f); lineTo(19.8f, 10.4f); lineTo(18f, 19.6f); lineTo(6f, 19.6f); close()
     }
     private fun PathBuilder.door() { moveTo(12f, 15.5f); lineTo(12f, 17.5f) }
 
@@ -85,6 +85,32 @@ object NavIcons {
         line { roundRect(14.5f, 11.5f, 21f, 16f, 1.5f) }
         line(1.5f) { rupee() }
     }
+
+    // Portfolio header and summary card.
+
+    /** A thin outline person: round head over open shoulders. */
+    val person = icon("Person") {
+        line(1.6f) { moveTo(15.6f, 8f); arcTo(3.6f, 3.6f, 0f, true, true, 8.4f, 8f); arcTo(3.6f, 3.6f, 0f, true, true, 15.6f, 8f); close() }
+        line(1.6f) { moveTo(5f, 20.5f); lineTo(5f, 19f); arcTo(4.5f, 4.5f, 0f, false, true, 9.5f, 14.5f); lineTo(14.5f, 14.5f); arcTo(4.5f, 4.5f, 0f, false, true, 19f, 19f); lineTo(19f, 20.5f) }
+    }
+
+    private fun PathBuilder.eyeShape() {
+        moveTo(1.5f, 12f); curveTo(5f, 5.6f, 19f, 5.6f, 22.5f, 12f); curveTo(19f, 18.4f, 5f, 18.4f, 1.5f, 12f); close()
+        moveTo(15.2f, 12f); arcTo(3.2f, 3.2f, 0f, true, true, 8.8f, 12f); arcTo(3.2f, 3.2f, 0f, true, true, 15.2f, 12f); close()
+    }
+    /** A thin outline eye; [eyeOff] has a slash through it. */
+    val eye = icon("Eye") { line(1.4f) { eyeShape() } }
+    val eyeOff = icon("EyeOff") { line(1.4f) { eyeShape() }; line(1.4f) { moveTo(4.5f, 4f); lineTo(19.5f, 20f) } }
+
+    /** A thin outline padlock with no keyhole. */
+    val lock = icon("Lock") {
+        line(2f) { roundRect(4.5f, 10.5f, 19.5f, 21.5f, 2.5f) }
+        line(2f) { moveTo(7.5f, 10.5f); lineTo(7.5f, 7.5f); arcTo(4.5f, 4.5f, 0f, false, true, 16.5f, 7.5f); lineTo(16.5f, 10.5f) }
+    }
+
+    /** Thin line arrows for gain and loss. */
+    val arrowUp = icon("ArrowUp") { line(2f) { moveTo(12f, 21f); lineTo(12f, 3.5f); moveTo(5f, 10.5f); lineTo(12f, 3.5f); lineTo(19f, 10.5f) } }
+    val arrowDown = icon("ArrowDown") { line(2f) { moveTo(12f, 3f); lineTo(12f, 20.5f); moveTo(5f, 13.5f); lineTo(12f, 20.5f); lineTo(19f, 13.5f) } }
 
     // Positions toolbar.
 
