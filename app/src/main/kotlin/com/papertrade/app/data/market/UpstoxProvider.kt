@@ -229,7 +229,7 @@ class UpstoxProvider(
             ?: throw ProviderException("No instrument metadata for $symbol", ProviderException.Kind.UNSUPPORTED)
     }
 
-    private suspend fun derivatives(u: Underlying) = master().byKey.values.filter { it.underlying == u.name && !it.expiry!!.isBefore(LocalDate.now(MarketHours.IST)) }
+    private suspend fun derivatives(u: Underlying) = master().byKey.values.filter { it.underlying == u.name && !it.expiry!!.isBefore(LocalDate.ofInstant(clock(), MarketHours.IST)) } // the injected clock, so tests don't go stale
 
     override suspend fun futures(underlying: Underlying) = runCatching {
         val contracts = derivatives(underlying).filter { it.segment == Segment.FUTURES }.sortedBy { it.expiry }.take(3)
