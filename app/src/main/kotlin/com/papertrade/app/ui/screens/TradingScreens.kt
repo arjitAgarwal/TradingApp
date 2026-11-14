@@ -273,6 +273,11 @@ private fun Chip(text: String, color: Color, bg: Color) = Box(Modifier.height(19
 private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertrade.app.data.market.MarketQuote?, booked: Triple<Int, BigDecimal?, BigDecimal?>?,
                          onExit: () -> Unit, onClick: () -> Unit) {
     val info = vm.info(p.instrumentId); val ink = titleInk(); val sub = subInk(); val slate = slateInk(); val label = SpanStyle(fontSize = 12.sp)
+    val unpriced = p.isOpen && (q == null || q.ltp.signum() <= 0); var confirmRemove by remember { mutableStateOf(false) }
+    if (confirmRemove) AlertDialog(onDismissRequest = { confirmRemove = false }, title = { Text("Remove position?") },
+        text = { Text("This contract has no price, so it cannot be exited. It will be closed at its buy price of ${Fmt.rupee(p.avgPrice)} with no profit or loss, and the money it holds comes back.") },
+        confirmButton = { TextButton({ confirmRemove = false; vm.removePosition(p) }, Modifier.testTag("confirm_pos_remove")) { Text("Remove") } },
+        dismissButton = { TextButton({ confirmRemove = false }) { Text("Cancel") } })
     // 106.6 dp a card: lines of 22, 20 and 20 dp, 3 and 7.4 dp apart, 16.5 dp above and 17.7 dp below.
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (p.isOpen) 1f else 0.5f).padding(start = 16.dp, end = 16.dp, top = 16.5.dp, bottom = 17.7.dp)
         .testTag("pos_${p.instrumentId}")) {
@@ -300,8 +305,9 @@ private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertr
                 if (p.quantity > 0) Chip("BUY", AssetGain, gainTint()) else Chip("SELL", AssetLoss, lossTint()); Spacer(Modifier.width(4.dp)); Chip("CF", ChipInk, cfTint())
                 Text("(1 Lot = ${info?.lotSize ?: "—"})", fontSize = 11.sp, lineHeight = 14.sp, color = slate, maxLines = 1, modifier = Modifier.padding(start = 8.dp).weight(1f))
                 // Closes the whole position at market straight away (paper money, so no confirmation step). Flush with the card's right edge, a little below the chips' line.
-                Text("EXIT AT MARKET", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = Accent, maxLines = 1, softWrap = false,
-                    modifier = Modifier.offset(y = 2.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onExit).padding(start = 6.dp, top = 2.dp, bottom = 2.dp).testTag("one_tap_exit_${p.instrumentId}"))
+                // A contract with no price at all can never be exited, so it offers removal at its buy price instead (after a confirmation).
+                Text(if (unpriced) "REMOVE POSITION" else "EXIT AT MARKET", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = Accent, maxLines = 1, softWrap = false,
+                    modifier = Modifier.offset(y = 2.dp).clip(RoundedCornerShape(6.dp)).clickable { if (unpriced) confirmRemove = true else onExit() }.padding(start = 6.dp, top = 2.dp, bottom = 2.dp).testTag(if (unpriced) "pos_remove_${p.instrumentId}" else "one_tap_exit_${p.instrumentId}"))
             } else {
                 Text(buildAnnotatedString { withStyle(label) { append("Buy") }; append(" ${Fmt.rupee(booked.second)}") }, fontSize = 14.sp, lineHeight = 20.sp, color = slate, maxLines = 1, modifier = Modifier.weight(1f))
                 Text(buildAnnotatedString { withStyle(label) { append("Sell") }; append(" ${Fmt.rupee(booked.third)}") }, fontSize = 14.sp, lineHeight = 20.sp, color = slate, maxLines = 1)
