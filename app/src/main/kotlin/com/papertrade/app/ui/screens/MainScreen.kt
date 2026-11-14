@@ -47,6 +47,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
@@ -114,8 +116,8 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
         Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
-            // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode and the header's tint on Portfolio.
-            Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else if (section == Section.PORTFOLIO && !searching) PortfolioTint else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
+            // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode and the header's tint on Portfolio and Orders.
+            Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else if ((section == Section.PORTFOLIO || section == Section.ORDERS) && !searching) PortfolioTint else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
             if (section == Section.ORDERS && !searching) OrdersTabs(ordersTab, { ordersTab = it }, onSearch = { searching = true }, onMenu = nav.account)
             else if (section == Section.PORTFOLIO && !searching) OrdersTabs(portfolioTab, { portfolioTab = it }, onSearch = { searching = true }, onMenu = nav.account, labels = listOf("Holdings", "My Wealth"), onProfile = nav.account)
@@ -273,44 +275,44 @@ private fun SearchTag(text: String, fg: Color, bg: Color) = Box(Modifier.height(
 
 /**
  * NIFTY and SENSEX side by side: name with the next expiry ("Expiry Tue", "Expiry Tomorrow"), then the level in the
- * day's colour with ▲/▼ and the change. Tap one to open the index.
+ * day's colour with a solid ▲/▼ and the change. Each card is as wide as its own lines and at least half the screen, so
+ * the strip scrolls sideways when a big move doesn't fit. Tap one to open the index.
  */
 @Composable
 private fun IndexCards(vm: AppVM, onIndex: (Underlying) -> Unit) {
     val quotes by vm.quotes.collectAsState(); val now by vm.now.collectAsState(); val expiries by vm.indexExpiries.collectAsState()
     val today = now.atZone(com.papertrade.core.MarketHours.IST).toLocalDate()
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+    val dark = androidx.compose.foundation.isSystemInDarkTheme(); val ink = MaterialTheme.colorScheme.onSurface
+    val half = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp / 2
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).horizontalScroll(rememberScrollState())) {
         Underlying.values().forEachIndexed { i, u ->
             if (i > 0) VerticalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
             val q = quotes[u.indexSymbol]
-            val c = Fmt.color(q?.change, MaterialTheme.colorScheme.onSurface) // by direction even when the market is shut
-            // 8 dp from the screen edge, 12 dp after the divider; 53 dp tall in all.
-            Column(Modifier.weight(1f).clickable { onIndex(u) }.padding(start = if (i == 0) 8.dp else 12.dp, end = if (i == 0) 12.dp else 6.dp, top = 8.dp, bottom = 6.dp).testTag("ticker_${u.name}")) {
-                Row(Modifier.height(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(u.name, fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f))
+            val c = pnlInk(q?.change, ink) // by direction even when the market is shut
+            // 8 dp from the screen edge, 12 dp after the divider and at the end; 53 dp tall in all. The divider's 1 dp comes off the second half.
+            Column(Modifier.widthIn(min = if (i == 0) half else half - 1.dp).width(IntrinsicSize.Max).clickable { onIndex(u) }.padding(start = if (i == 0) 8.dp else 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp).testTag("ticker_${u.name}")) {
+                Row(Modifier.fillMaxWidth().height(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(u.name, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = if (dark) ink else Color(0xFF4A5261), maxLines = 1, softWrap = false, modifier = Modifier.weight(1f).padding(end = 8.dp))
                     expiries[u]?.let { nextIndexExpiry(it, now) }?.let { e -> val soon = !e.isAfter(today.plusDays(1))
-                        Box(Modifier.fillMaxHeight().background(if (soon) Gain.copy(alpha = 0.14f) else Accent.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp), contentAlignment = Alignment.Center) {
-                            Text(expiryChip(e, today), fontSize = 11.sp, lineHeight = 14.sp, maxLines = 1, softWrap = false)
+                        Box(Modifier.fillMaxHeight().offset(y = (-0.5).dp).background(if (soon) AssetGain.copy(alpha = 0.125f) else Accent.copy(alpha = 0.12f), RoundedCornerShape(2.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                            Text(expiryChip(e, today), fontSize = 10.sp, lineHeight = 14.sp, color = if (dark) ink else Color(0xFF2A303A), maxLines = 1, softWrap = false, modifier = Modifier.offset(y = 0.5.dp))
                         }
                     }
                 }
                 Row(Modifier.padding(top = 2.dp).height(19.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(Fmt.inr(q?.ltp), fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = c, maxLines = 1, softWrap = false)
-                    q?.change?.takeIf { it.signum() != 0 }?.let { Text(if (it.signum() > 0) "▲" else "▼", fontSize = 10.sp, lineHeight = 12.sp, color = c, modifier = Modifier.padding(start = 3.dp)) }
-                    Spacer(Modifier.weight(1f)); Spacer(Modifier.width(4.dp))
-                    // A ~180dp half on a 360dp phone can't always hold a big SENSEX move at full size, so this one shrinks to fit.
-                    FitText("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", 12.sp, MaterialTheme.colorScheme.onSurface)
+                    // A solid triangle 4 dp after the level, sitting a touch above the middle of the line.
+                    q?.change?.takeIf { it.signum() != 0 }?.let { ch ->
+                        androidx.compose.foundation.Canvas(Modifier.padding(start = 4.dp).offset(y = (-0.7).dp).size(9.8.dp, 6.1.dp)) {
+                            val (base, tip) = if (ch.signum() > 0) size.height to 0f else 0f to size.height
+                            drawPath(androidx.compose.ui.graphics.Path().apply { moveTo(0f, base); lineTo(size.width, base); lineTo(size.width / 2, tip); close() }, c)
+                        }
+                    }
+                    Text("${Fmt.signed(q?.change)} (${Fmt.pct(q?.changePct)})", fontSize = 12.sp, lineHeight = 16.sp, color = subInk(), maxLines = 1, softWrap = false, modifier = Modifier.padding(start = 10.dp))
                 }
             }
         }
     }
-}
-
-/** One-line text that steps its font down (no lower than [min]) until it fits its width, instead of being cut off. */
-@Composable
-private fun FitText(text: String, size: androidx.compose.ui.unit.TextUnit, color: Color, min: androidx.compose.ui.unit.TextUnit = 8.sp) {
-    var fs by remember(text.length, size) { mutableStateOf(size) } // keyed on length so ticking prices don't re-fit every second
-    Text(text, fontSize = fs, lineHeight = fs * 1.25f, color = color, maxLines = 1, softWrap = false, onTextLayout = { if (it.hasVisualOverflow && fs > min) fs *= 0.92f })
 }
 
 /** The next expiry still to come: today's counts only until the 15:30 IST close. Null if the list has none left. */
@@ -470,29 +472,28 @@ private fun WatchRow(label: Pair<String, String>, q: MarketQuote?, onClick: () -
 }
 
 /**
- * "Orders  Positions" as text tabs in the ORDERS section on a pale blue-grey band (selected charcoal, the other slate),
- * with search and ⋮ in round white buttons on the right.
+ * "Orders  Positions" (or Portfolio's "Holdings  My Wealth") as text tabs on a pale band that the status bar strip shares
+ * (selected charcoal, the other slate), with a thin search icon and ⋮ in round white buttons on the right.
  */
 @Composable
 private fun OrdersTabs(selected: Int, onSelect: (Int) -> Unit, onSearch: () -> Unit, onMenu: () -> Unit, labels: List<String> = listOf("Orders", "Positions"), onProfile: (() -> Unit)? = null) {
-    // Portfolio (the one with a profile icon) is a little tighter and paler than Orders, with thin line icons, as in its reference.
-    val folio = onProfile != null; val gap = if (folio) 4.dp else 10.dp
-    Row(Modifier.fillMaxWidth().background(if (folio) PortfolioTint else Color(0xFFEEF1F8)).height(56.dp).padding(start = if (folio) 8.dp else 9.dp, end = if (folio) 12.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Both headers share one look (pale band, thin line icons, wide dots); Portfolio's tabs start further left because of its profile icon.
+    val folio = onProfile != null; val gap = 4.dp
+    Row(Modifier.fillMaxWidth().background(PortfolioTint).height(56.dp).padding(start = if (folio) 8.dp else 10.5.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         labels.forEachIndexed { i, t ->
             Text(t, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = if (selected == i) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected == i) (if (folio) Color(0xFF1E2630) else Color(0xFF252B35)) else (if (folio) Color(0xFF45505E) else Color(0xFF4F5866)),
-                modifier = Modifier.offset(y = if (folio) 1.dp else 0.dp).clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = if (folio) 4.dp else 7.dp, vertical = 6.dp).testTag("tab_$t"))
+                color = if (selected == i) Color(0xFF1E2630) else Color(0xFF45505E),
+                modifier = Modifier.offset(y = 1.dp).clip(RoundedCornerShape(8.dp)).clickable { onSelect(i) }.padding(horizontal = if (folio) 4.dp else 6.5.dp, vertical = 6.dp).testTag("tab_$t"))
         }
         Spacer(Modifier.weight(1f))
         @Composable fun RoundButton(onClick: () -> Unit, tag: String, content: @Composable () -> Unit) =
             Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White).clickable(onClick = onClick).testTag(tag), contentAlignment = Alignment.Center) { content() }
         onProfile?.let { p -> Icon(NavIcons.person, "Account", Modifier.size(40.dp).clip(CircleShape).clickable(onClick = p).padding(8.5.dp).testTag("header_profile"), tint = Color(0xFF252B35)); Spacer(Modifier.width(gap)) }
-        RoundButton(onSearch, "orders_search") { Icon(if (folio) NavIcons.search else Icons.Default.Search, "Search", Modifier.size(if (folio) 23.dp else 24.dp), tint = Color(0xFF252B35)) }
+        RoundButton(onSearch, "orders_search") { Icon(NavIcons.search, "Search", tint = Color(0xFF252B35)) }
         Spacer(Modifier.width(gap))
         RoundButton(onMenu, "orders_menu") {
-            // Portfolio's three dots are spaced wider than the stock icon's.
-            if (folio) androidx.compose.foundation.Canvas(Modifier.size(24.dp)) { listOf(-1f, 0f, 1f).forEach { drawCircle(Color(0xFF252B35), 1.9.dp.toPx(), center.copy(y = center.y + it * 7.2.dp.toPx())) } }
-            else Icon(Icons.Default.MoreVert, "More", Modifier.size(24.dp), tint = Color(0xFF252B35))
+            // Three dots spaced wider than the stock icon's.
+            androidx.compose.foundation.Canvas(Modifier.size(24.dp).semantics { contentDescription = "More" }) { listOf(-1f, 0f, 1f).forEach { drawCircle(Color(0xFF252B35), 1.9.dp.toPx(), center.copy(y = center.y + it * 7.2.dp.toPx())) } }
         }
     }
 }
@@ -668,10 +669,10 @@ private fun BottomBar(section: Section, onSection: (Section) -> Unit, onAccount:
 
 @Composable
 private fun RowScope.BottomItem(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, tag: String, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
-    val c = if (selected) Accent else MaterialTheme.colorScheme.onSurface
-    Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick).padding(top = 7.5.dp).testTag(tag), horizontalAlignment = Alignment.CenterHorizontally) {
+    val c = if (selected) Accent else if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else Color(0xFF414B5A)
+    Column(Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick).padding(top = 7.dp).testTag(tag), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.requiredSize(size), tint = if (selected) Color.Unspecified else c) }; Spacer(Modifier.height(11.5.dp))
-        Text(label, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = c, maxLines = 1, softWrap = false)
+        Text(label, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium, letterSpacing = if (selected) (-0.3).sp else 0.sp, color = c, maxLines = 1, softWrap = false)
     }
 }
 
