@@ -94,6 +94,23 @@ class PaperExchange(
         return EngineResult(state.copy(orders = state.orders + (c.id to c)), c)
     }
 
+    /**
+     * Removes an open position whose contract has no price at all, so it could never be exited (for example one bought on demo
+     * prices that the live source does not list). It closes at its own average price with no charges: no profit or loss is booked,
+     * the cash or margin it tied up comes back, and working orders on the contract are cancelled. The closing fill is marked
+     * [QuoteSource.MANUAL]. Refused while the contract has a price ([quote] with a positive LTP), so it cannot dodge a real loss.
+     */
+    fun removeUnpriced(state: AccountState, instrumentId: String, quote: Quote?, now: Instant): EngineResult {
+        val inst = instruments(instrumentId) ?: return EngineResult(state, error = "Unknown instrument")
+        val pos = state.positions[instrumentId]?.takeIf { it.isOpen } ?: return EngineResult(state, error = "No open position to remove")
+        if (quote != null && quote.ltp.signum() > 0) return EngineResult(state, error = "This position has a price; exit it at market instead")
+        var s = state
+        state.orders.values.filter { it.instrumentId == instrumentId && it.status.isActive }.forEach { s = cancel(s, it.id, now).state }
+        val side = if (pos.quantity > 0) Side.SELL else Side.BUY
+        val o = OrderStateMachine.transition(Order(newOrderId(), instrumentId, side, OrderType.MARKET, kotlin.math.abs(pos.quantity), null, createdAt = now, updatedAt = now), OrderStatus.OPEN, now)
+        return applyFill(s.copy(orders = s.orders + (o.id to o)), o, inst, o.quantity, pos.avgPrice, QuoteSource.MANUAL, now, charge = false)
+    }
+
     fun staleReason(q: Quote, now: Instant): String? = when {
         q.ltp.signum() <= 0 -> "invalid price"
         config.allowClosedMarketFills -> null // test mode: the last price is good enough
@@ -128,11 +145,11 @@ class PaperExchange(
         return applyFill(state.copy(orders = state.orders + (o.id to seen)), seen, inst, qty, ref, q.source, now)
     }
 
-    /** Applies exactly one fill. Idempotent on fill id. Wallet, ledger, position and order change together. */
-    fun applyFill(state: AccountState, order: Order, inst: Instrument, qty: Int, price: BigDecimal, src: QuoteSource, now: Instant): EngineResult {
+    /** Applies exactly one fill. Idempotent on fill id. Wallet, ledger, position and order change together. [charge] false skips charges (a removed position). */
+    fun applyFill(state: AccountState, order: Order, inst: Instrument, qty: Int, price: BigDecimal, src: QuoteSource, now: Instant, charge: Boolean = true): EngineResult {
         val fillId = "${order.id}-F${order.fillSeq + 1}"
         if (state.fills.any { it.id == fillId }) return EngineResult(state, order) // duplicate protection
-        val charges = ChargeCalculator.charges(config.charges, inst, order.side, qty, price)
+        val charges = if (charge) ChargeCalculator.charges(config.charges, inst, order.side, qty, price) else Dec.money(BigDecimal.ZERO)
         val pos0 = state.positions[inst.id] ?: Position(inst.id)
         val upd = PositionMath.apply(pos0, order.side, qty, price, inst.multiplier, charges)
         val value = Dec.money(price * BigDecimal(qty) * BigDecimal(inst.multiplier))
