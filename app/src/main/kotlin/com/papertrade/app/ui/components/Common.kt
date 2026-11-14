@@ -34,7 +34,7 @@ import java.math.BigDecimal
 sealed interface UiState<out T> {
     data object Loading : UiState<Nothing>
     data class Success<T>(val data: T) : UiState<T>
-    data class Error(val message: String, val offline: Boolean = false) : UiState<Nothing>
+    data class Error(val message: String, val offline: Boolean = false, val title: String? = null) : UiState<Nothing>
 }
 
 @Composable
@@ -67,7 +67,7 @@ fun CenterMessage(title: String, body: String? = null, action: (() -> Unit)? = n
 @Composable
 fun <T> StateHost(state: UiState<T>, onRetry: (() -> Unit)? = null, content: @Composable (T) -> Unit) = when (state) {
     UiState.Loading -> Loading()
-    is UiState.Error -> CenterMessage(if (state.offline) "You're offline" else "Something went wrong", state.message, onRetry)
+    is UiState.Error -> CenterMessage(state.title ?: if (state.offline) "You're offline" else "Something went wrong", state.message, onRetry)
     is UiState.Success -> content(state.data)
 }
 
@@ -97,6 +97,26 @@ fun PriceChart(candles: List<Candle>, modifier: Modifier = Modifier) {
             drawPath(path, line, style = Stroke(width = 3f))
             marker?.let { i -> val p = pt(i); drawLine(Color.Gray, Offset(p.x, 0f), Offset(p.x, size.height), strokeWidth = 1f); drawCircle(line, 8f, p) }
         }
+    }
+}
+
+/**
+ * Watchlist mini chart (Groww style): today's closes ending at the live price, coloured by the day's change,
+ * over a dashed line at the previous close. Draws nothing without a live price (e.g. an expired contract).
+ */
+@Composable
+fun Sparkline(closes: List<BigDecimal>, ltp: BigDecimal?, prevClose: BigDecimal?, change: BigDecimal?, modifier: Modifier = Modifier) {
+    val pts = (if (ltp != null) closes + ltp else emptyList()).map { it.toDouble() }
+    Canvas(modifier) {
+        if (pts.size < 2) return@Canvas
+        val base = prevClose?.toDouble()
+        val min = minOf(pts.min(), base ?: pts.min()); val max = maxOf(pts.max(), base ?: pts.max()); val span = (max - min).takeIf { it > 0 } ?: 1.0
+        fun y(v: Double) = (size.height * (1 - (v - min) / span)).toFloat()
+        base?.let { drawLine(Color.Gray.copy(alpha = 0.4f), Offset(0f, y(it)), Offset(size.width, y(it)), strokeWidth = 1.5f,
+            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 6f))) }
+        val path = Path().apply { pts.forEachIndexed { i, v -> val x = size.width * i / (pts.size - 1); if (i == 0) moveTo(x, y(v)) else lineTo(x, y(v)) } }
+        val up = change?.let { it.signum() >= 0 } ?: (pts.last() >= pts.first())
+        drawPath(path, if (up) Gain else Loss, style = Stroke(width = 2.5f))
     }
 }
 

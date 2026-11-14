@@ -22,6 +22,8 @@ data class SimulationExport(
     val version: Int = 1, val exportedAt: Long, val wallet: WalletEntity, val orders: List<OrderEntity>, val fills: List<FillEntity>,
     val positions: List<PositionEntity>, val ledger: List<LedgerEntity>, val instruments: List<InstrumentEntity>,
     val watchlists: List<WatchlistEntity>, val watchlistItems: List<WatchlistItemEntity>,
+    /** Hand-entered mutual funds. Null in exports made before they existed; importing those leaves funds untouched. */
+    val mutualFunds: List<MutualFundEntity>? = null,
 )
 
 /**
@@ -32,7 +34,7 @@ class TradingRepository(
     private val db: AppDatabase,
     private val settings: suspend () -> AppSettings,
     private val clock: () -> Instant = { Instant.now() },
-    val startingCapital: BigDecimal = BigDecimal("1000000"),
+    val startingCapital: BigDecimal = BigDecimal("1354510"),
 ) {
     private val dao = db.trading(); private val market = db.marketCache()
     private val mutex = Mutex()
@@ -54,7 +56,20 @@ class TradingRepository(
         if (dao.wallet() == null) {
             val now = clock(); val s = AccountState.initial(startingCapital, now)
             dao.persistTrade(s.wallet.toEntity(), emptyList(), emptyList(), emptyList(), s.ledger.mapIndexed { i, e -> e.toEntity(i.toLong()) })
-        }
+        } else topUpOldCapital()
+    }
+
+    /**
+     * One time: wallets created with the old ₹10,00,000 default move to [startingCapital]. The difference is added to cash with a
+     * ledger entry (ledger sum must equal cash), so trades, positions and net P&L stay exactly as they were.
+     */
+    private suspend fun topUpOldCapital() {
+        val w = dao.wallet()?.toDomain() ?: return
+        if (w.startingCapital.compareTo(BigDecimal("1000000")) != 0 || startingCapital.compareTo(w.startingCapital) == 0) return
+        val delta = startingCapital - w.startingCapital
+        val entry = LedgerEntry("capital-topup", LedgerType.INITIAL_CAPITAL, delta, null, clock(), "Starting virtual capital raised to ${startingCapital.toPlainString()}")
+        dao.persistTrade(w.copy(startingCapital = startingCapital, cash = w.cash + delta).toEntity(), emptyList(), emptyList(), emptyList(),
+            listOf(entry.toEntity(dao.ledger().size.toLong())))
     }
 
     suspend fun registerInstrument(info: InstrumentInfo) {
@@ -99,9 +114,31 @@ class TradingRepository(
         val ex = exchange(); val old = load(); val r = ex.cancel(old, orderId, clock()); persist(old, r.state); r
     }
 
+    /** Removes an open position that has no price to exit at; see [PaperExchange.removeUnpriced]. Nothing is saved when it is refused. */
+    suspend fun removeUnpriced(symbol: String, quote: MarketQuote?): EngineResult = mutex.withLock {
+        val ex = exchange(); val old = load(); val r = ex.removeUnpriced(old, symbol, quote?.toCore(), clock()); if (r.error == null) persist(old, r.state); r
+    }
+
     suspend fun resetSimulation() = mutex.withLock {
         val s = AccountState.initial(startingCapital, clock())
         dao.replaceAll(s.wallet.toEntity(), emptyList(), emptyList(), emptyList(), s.ledger.mapIndexed { i, e -> e.toEntity(i.toLong()) })
+        db.mutualFunds().clear()
+    }
+
+    /**
+     * Brings in a delivery stock bought outside the app, at the user's own buy price. No cash moves: starting capital rises by the
+     * cost instead, so net P&L (equity - starting capital) counts only the move since that price. Adding to a holding re-averages it.
+     */
+    suspend fun addHolding(info: InstrumentInfo, qty: Int, price: BigDecimal) {
+        require(info.segment == Segment.EQUITY) { "Only stocks can be added as holdings" }
+        require(qty > 0 && price.signum() > 0) { "Units and price must be more than zero" }
+        registerInstrument(info)
+        mutex.withLock {
+            val old = load(); val pos = old.positions[info.symbol] ?: Position(info.symbol)
+            val upd = PositionMath.apply(pos, Side.BUY, qty, Dec.price(price), 1, BigDecimal.ZERO).position
+            val cost = Dec.money(price * BigDecimal(qty))
+            persist(old, old.copy(wallet = old.wallet.copy(startingCapital = old.wallet.startingCapital + cost), positions = old.positions + (info.symbol to upd)))
+        }
     }
 
     suspend fun valuation(state: AccountState, price: (String) -> BigDecimal?) = Portfolio.value(state, instruments.toMap(), price)
@@ -111,7 +148,7 @@ class TradingRepository(
         json.encodeToString(SimulationExport.serializer(), SimulationExport(
             exportedAt = clock().toEpochMilli(), wallet = dao.wallet() ?: Wallet(startingCapital, startingCapital).toEntity(), orders = dao.orders(),
             fills = dao.fills(), positions = dao.positions(), ledger = dao.ledger(), instruments = market.instruments(),
-            watchlists = emptyList(), watchlistItems = emptyList()))
+            watchlists = emptyList(), watchlistItems = emptyList(), mutualFunds = db.mutualFunds().allNow()))
     }
 
     /** Validates before replacing anything: version, ledger sum == cash, unique ids, fills reference known orders. */
@@ -126,5 +163,6 @@ class TradingRepository(
         require(x.fills.all { it.orderId in orderIds }) { "Fill references unknown order" }
         x.instruments.forEach { market.upsertInstrument(it); instruments[it.symbol] = it.toInfo().toCore() }
         dao.replaceAll(x.wallet, x.orders, x.positions, x.fills, x.ledger)
+        x.mutualFunds?.let { db.mutualFunds().replaceAll(it) }
     }
 }

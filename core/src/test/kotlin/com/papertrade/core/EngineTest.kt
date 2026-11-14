@@ -66,6 +66,19 @@ class EngineTest {
         assertTrue(f.s.fills.isEmpty())
     }
 
+    @Test fun testModeFillsAtTheLastPriceWhenTheMarketIsClosed() {
+        val f = Fx(ExecutionConfig(charges = ChargeModel.ZERO, allowClosedMarketFills = true))
+        val cached = f.q(RELIANCE.id, "100", "99.95", "100.05", at = T0.minus(Duration.ofHours(16)), src = QuoteSource.CACHED)
+        val buy = f.place(RELIANCE.id, Side.BUY, 10, cached)
+        assertEquals(OrderStatus.FILLED, buy.order!!.status); assertEquals(d("100.05"), buy.newFills[0].price)
+        // A limit order fills against a closed-market price too, still never worse than its limit.
+        f.now = f.now.plusSeconds(1)
+        val sell = f.place(RELIANCE.id, Side.SELL, 10, f.q(RELIANCE.id, "100", "99.95", "100.05", at = T0.minus(Duration.ofHours(15)), src = QuoteSource.CACHED), OrderType.LIMIT, "99.90")
+        assertEquals(OrderStatus.FILLED, sell.order!!.status); assertEquals(d("99.95"), sell.newFills[0].price)
+        // An invalid price is refused even in test mode.
+        assertEquals(OrderStatus.REJECTED, f.place(RELIANCE.id, Side.BUY, 1, f.q(RELIANCE.id, "0", src = QuoteSource.CACHED)).order!!.status)
+    }
+
     @Test fun limitBuyWaitsThenFillsOnlyOnNewEligibleQuote() {
         val f = Fx()
         val r = f.place(RELIANCE.id, Side.BUY, 10, f.q(RELIANCE.id, "100", "99.95", "100.05"), OrderType.LIMIT, "99.50")
@@ -252,6 +265,40 @@ class EngineTest {
         assertEquals(d("439.09"), c)
         assertEquals(c, ChargeCalculator.charges(ChargeModel.ILLUSTRATIVE, FUT, Side.SELL, 1, d("25000")))
         assertEquals(d("0.00"), ChargeCalculator.charges(ChargeModel.ZERO, FUT, Side.SELL, 1, d("25000")))
+    }
+
+    @Test fun removingAnUnpricedLongOptionGivesTheCashBackWithNoPnl() {
+        val f = Fx(ExecutionConfig(charges = ChargeModel.ILLUSTRATIVE))
+        f.place(CALL.id, Side.BUY, 2, f.q(CALL.id, "100", "100", "100"))
+        val paid = f.s.positions.getValue(CALL.id).charges; val cashAfterBuy = f.s.wallet.cash
+        val working = f.place(CALL.id, Side.SELL, 2, null, OrderType.LIMIT, "500").order!!
+        val r = f.ex.removeUnpriced(f.s, CALL.id, null, f.now); f.s = r.state
+        assertNull(r.error); assertEquals(OrderStatus.FILLED, r.order!!.status)
+        val fill = r.newFills.single()
+        assertEquals(QuoteSource.MANUAL, fill.quoteSource); assertEquals(0, d("100").compareTo(fill.price)); assertEquals(0, fill.charges.signum()); assertEquals(0, fill.realizedGross.signum())
+        val p = f.s.positions.getValue(CALL.id)
+        assertFalse(p.isOpen); assertEquals(0, p.realizedGross.signum()); assertEquals(paid, p.charges) // no exit charges; what the entry cost stays paid
+        assertEquals(cashAfterBuy + d("15000.00"), f.s.wallet.cash) // 2 lots x 75 x 100 comes back
+        assertEquals(OrderStatus.CANCELLED, f.s.orders.getValue(working.id).status)
+        assertEquals(f.s.wallet.cash, f.s.wallet.startingCapital + f.s.ledger.drop(1).fold(BigDecimal.ZERO) { a, e -> a + e.amount })
+    }
+
+    @Test fun removingAnUnpricedShortFutureReleasesMarginAndMovesNoCash() {
+        val f = Fx()
+        f.place(FUT.id, Side.SELL, 1, f.q(FUT.id, "25000", "25000", "25000"))
+        assertTrue(f.s.wallet.reservedMargin.signum() > 0)
+        val r = f.ex.removeUnpriced(f.s, FUT.id, null, f.now); f.s = r.state
+        assertNull(r.error); assertEquals(Side.BUY, r.order!!.side)
+        assertEquals(d("1000000"), f.s.wallet.cash); assertEquals(0, f.s.wallet.reservedMargin.signum()); assertFalse(f.s.positions.getValue(FUT.id).isOpen)
+    }
+
+    @Test fun removalIsRefusedWhileThereIsAPriceOrNothingOpen() {
+        val f = Fx()
+        f.place(CALL.id, Side.BUY, 1, f.q(CALL.id, "100", "100", "100"))
+        val priced = f.ex.removeUnpriced(f.s, CALL.id, f.q(CALL.id, "40", src = QuoteSource.CACHED), f.now)
+        assertNotNull(priced.error); assertEquals(f.s, priced.state)
+        assertNotNull(f.ex.removeUnpriced(f.s, FUT.id, null, f.now).error)
+        assertNotNull(f.ex.removeUnpriced(f.s, "NOPE", null, f.now).error)
     }
 
     @Test fun missingQuoteValuesAtCostNotInvented() {
