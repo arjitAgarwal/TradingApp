@@ -115,6 +115,11 @@ class TradingRepository(
         val ex = exchange(); val old = load(); val r = ex.cancel(old, orderId, clock()); persist(old, r.state); r
     }
 
+    /** Removes an open position that has no price to exit at; see [PaperExchange.removeUnpriced]. Nothing is saved when it is refused. */
+    suspend fun removeUnpriced(symbol: String, quote: MarketQuote?): EngineResult = mutex.withLock {
+        val ex = exchange(); val old = load(); val r = ex.removeUnpriced(old, symbol, quote?.toCore(), clock()); if (r.error == null) persist(old, r.state); r
+    }
+
     suspend fun resetSimulation() = mutex.withLock {
         val s = AccountState.initial(startingCapital, clock())
         dao.replaceAll(s.wallet.toEntity(), emptyList(), emptyList(), emptyList(), s.ledger.mapIndexed { i, e -> e.toEntity(i.toLong()) })
