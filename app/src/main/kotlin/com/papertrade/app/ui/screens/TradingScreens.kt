@@ -185,24 +185,26 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
     val shownClosed = (if (filter == PosFilter.OPEN) emptyList() else closed).filter(::matches)
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().height(60.dp).padding(start = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        // 55.8 dp, its content centred 4 dp below the middle. The two icons sit 32 dp apart from 12 dp in; the last label ends 16 dp from the edge.
+        Row(Modifier.fillMaxWidth().height(55.8.dp).padding(start = 12.dp, top = 8.dp, end = 11.5.dp), verticalAlignment = Alignment.CenterVertically) {
             Box {
-                IconButton({ filterMenu = true }, Modifier.testTag("pos_filter")) { Icon(NavIcons.sliders, "Filter positions", Modifier.size(20.dp), tint = ExitBlue) }
+                Box(Modifier.size(32.dp, 40.dp).clip(RoundedCornerShape(50)).clickable { filterMenu = true }.testTag("pos_filter"), contentAlignment = Alignment.Center) { Icon(NavIcons.sliders, "Filter positions", Modifier.offset(y = (-0.5).dp), tint = Accent) }
                 DropdownMenu(filterMenu, { filterMenu = false }) {
                     PosFilter.values().forEach { f -> DropdownMenuItem({ Text(f.label, fontWeight = if (f == filter) FontWeight.SemiBold else FontWeight.Normal) }, { filter = f; filterMenu = false }) }
                 }
             }
-            IconButton({ searching = !searching; if (!searching) query = "" }, Modifier.testTag("pos_search")) { Icon(NavIcons.search, "Search positions", Modifier.size(24.dp), tint = ExitBlue) }
+            Box(Modifier.size(32.dp, 40.dp).clip(RoundedCornerShape(50)).clickable { searching = !searching; if (!searching) query = "" }.testTag("pos_search"), contentAlignment = Alignment.Center) { Icon(NavIcons.search, "Search positions", tint = Accent) }
             if (filter != PosFilter.ALL) Text(filter.label, fontSize = 12.sp, color = dim, maxLines = 1)
             Spacer(Modifier.weight(1f))
             // Secure Exit (auto-exit at a total profit/loss limit) isn't built yet.
-            TextButton({ vm.messages.tryEmit("Secure Exit is coming soon") }, contentPadding = PaddingValues(horizontal = 6.dp)) {
-                Icon(NavIcons.secureExit, null, Modifier.size(21.dp), tint = ExitBlue); Spacer(Modifier.width(7.dp)); Text("SECURE EXIT", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = ExitBlue)
+            Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable { vm.messages.tryEmit("Secure Exit is coming soon") }.padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(NavIcons.secureExit, null, Modifier.offset(y = (-0.3).dp).size(19.5.dp), tint = Accent); Spacer(Modifier.width(6.dp)); Text("SECURE EXIT", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = Accent, maxLines = 1)
             }
-            Spacer(Modifier.width(6.dp))
-            TextButton({ confirmExitAll = true }, Modifier.testTag("exit_all"), enabled = open.isNotEmpty(), contentPadding = PaddingValues(horizontal = 6.dp)) {
-                Icon(NavIcons.exitAll, null, Modifier.size(21.dp), tint = if (open.isNotEmpty()) ExitBlue else dim); Spacer(Modifier.width(7.dp))
-                Text("EXIT ALL", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (open.isNotEmpty()) ExitBlue else dim)
+            Spacer(Modifier.width(1.5.dp))
+            val exitInk = if (open.isNotEmpty()) Accent else dim
+            Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = open.isNotEmpty()) { confirmExitAll = true }.padding(horizontal = 4.dp, vertical = 8.dp).testTag("exit_all"), verticalAlignment = Alignment.CenterVertically) {
+                Icon(NavIcons.exitAll, null, Modifier.size(22.5.dp), tint = exitInk); Spacer(Modifier.width(5.5.dp))
+                Text("EXIT ALL", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = exitInk, maxLines = 1)
             }
         }
         if (searching) OutlinedTextField(query, { query = it }, singleLine = true, placeholder = { Text("Search positions") },
@@ -219,14 +221,17 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
         // Total of today's book (all visible rows, whatever the filter), pinned above the bottom bar.
         val total = pnl.values.fold(BigDecimal.ZERO, BigDecimal::add)
         val unrealised = open.mapNotNull { p -> val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.unrealized }.fold(BigDecimal.ZERO, BigDecimal::add)
-        Column(Modifier.fillMaxWidth().background(Fmt.color(total, dim).copy(alpha = 0.14f)).clickable { breakdown = !breakdown }.padding(horizontal = 16.dp).testTag("positions_total_bar")) {
-            if (breakdown) { Spacer(Modifier.height(8.dp)); StatRow("Realised today", Fmt.signed(total - unrealised)); StatRow("Unrealised", Fmt.signed(unrealised)) }
-            Row(Modifier.height(40.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.CheckCircle, null, Modifier.size(18.dp), tint = TotalCheck); Spacer(Modifier.width(8.dp))
-                Text("Total", fontSize = 15.sp, lineHeight = 20.sp, color = CardInk, modifier = Modifier.weight(1f))
-                Text(signedRupee(total), fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = CardInk, modifier = Modifier.testTag("positions_total")) // the bar's tint shows profit or loss
+        // Pale green for a profit, pale red for a loss (the green and red at 12.5%), grey when flat.
+        val tint = when (total.signum()) { 1 -> gainTint(); -1 -> lossTint(); else -> dim.copy(alpha = 0.125f) }
+        Column(Modifier.fillMaxWidth().background(tint).clickable { breakdown = !breakdown }.padding(start = 10.25.dp, end = 14.dp).testTag("positions_total_bar")) {
+            if (breakdown) Column(Modifier.padding(start = 6.dp, end = 2.dp, top = 8.dp)) { StatRow("Realised today", Fmt.signed(total - unrealised)); StatRow("Unrealised", Fmt.signed(unrealised)) }
+            Row(Modifier.height(40.5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.CheckCircle, null, Modifier.size(19.5.dp), tint = AssetGain); Spacer(Modifier.width(1.75.dp))
+                Text("Total", fontSize = 14.sp, lineHeight = 20.sp, color = titleInk(), modifier = Modifier.weight(1f).offset(y = (-0.2).dp))
+                // "+ ₹10,63,365.00": a space after the sign here, unlike the cards. The bar's tint shows profit or loss.
+                Text((when (total.signum()) { 1 -> "+ "; -1 -> "- "; else -> "" }) + Fmt.rupee(total.abs()), fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = titleInk(), modifier = Modifier.offset(y = (-0.2).dp).testTag("positions_total"))
                 Spacer(Modifier.width(6.dp))
-                Icon(if (breakdown) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, if (breakdown) "Hide breakdown" else "Show breakdown", Modifier.size(20.dp), tint = CardInk)
+                Icon(if (breakdown) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp, if (breakdown) "Hide breakdown" else "Show breakdown", Modifier.size(20.dp), tint = titleInk())
             }
         }
     }
@@ -246,17 +251,17 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
 private fun signedRupee(v: BigDecimal) = (if (v.signum() > 0) "+" else "") + Fmt.rupee(v)
 private val posDate = java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy", java.util.Locale.ENGLISH)
 
-/** "NIFTY 29-Sep-26 22450 PE", or "RELIANCE 24-Nov-26" for a future (no FUT tag), all regular weight; a stock is just its ticker. */
+/** "NIFTY 29-Sep-26 22450 PE", or "RELIANCE 24-Nov-26" for a future (no FUT tag): the name at full size, the contract a step smaller; a stock is just its ticker. */
 private fun posTitle(id: String, info: com.papertrade.app.data.market.InstrumentInfo?) = buildAnnotatedString {
     val e = info?.expiry
     if (e == null) { append(id.substringAfter(':').removeSuffix("-EQ")); return@buildAnnotatedString }
-    append(info.underlying ?: id.substringAfter(':'))
-    append(" ${e.format(posDate)}" + (info.optionType?.let { " ${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${it.name}" } ?: ""))
+    append((info.underlying ?: id.substringAfter(':')) + " ")
+    withStyle(SpanStyle(fontSize = 14.sp)) { append(e.format(posDate) + (info.optionType?.let { " ${info.strike?.stripTrailingZeros()?.toPlainString() ?: ""} ${it.name}" } ?: "")) }
 }
 
 @Composable
-private fun Chip(text: String, color: androidx.compose.ui.graphics.Color, bg: androidx.compose.ui.graphics.Color = color.copy(alpha = 0.14f)) = Box(Modifier.height(19.dp).background(bg, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
-    contentAlignment = Alignment.Center) { Text(text, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium, color = color) }
+private fun Chip(text: String, color: Color, bg: Color) = Box(Modifier.height(19.dp).background(bg, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp),
+    contentAlignment = Alignment.Center) { Text(text, fontSize = 11.sp, lineHeight = 14.sp, color = color) }
 
 /**
  * Open:   NIFTY 29-Sep-26 22450 PE ......... +₹191.10      Closed (greyed):  NIFTY 06-Oct-26 22300 PE ... +₹572.00
@@ -267,56 +272,52 @@ private fun Chip(text: String, color: androidx.compose.ui.graphics.Color, bg: an
 @Composable
 private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertrade.app.data.market.MarketQuote?, booked: Triple<Int, BigDecimal?, BigDecimal?>?,
                          onExit: () -> Unit, onClick: () -> Unit) {
-    val info = vm.info(p.instrumentId); val dim = MaterialTheme.colorScheme.onSurfaceVariant; val ink = MaterialTheme.colorScheme.onSurface
-    // 100 dp a card: three 20 dp lines, 4 and 8 dp apart.
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (p.isOpen) 1f else 0.5f).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp)
+    val info = vm.info(p.instrumentId); val ink = titleInk(); val sub = subInk(); val slate = slateInk(); val label = SpanStyle(fontSize = 12.sp)
+    // 106.6 dp a card: lines of 22, 20 and 20 dp, 3 and 7.4 dp apart, 16.5 dp above and 17.7 dp below.
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).alpha(if (p.isOpen) 1f else 0.5f).padding(start = 16.dp, end = 16.dp, top = 16.5.dp, bottom = 17.7.dp)
         .testTag("pos_${p.instrumentId}")) {
-        // Title regular in charcoal, P&L medium in the softer card green/red, the second line smaller in grey.
-        val pnlColor = when (pnl.signum()) { 1 -> CardGain; -1 -> CardLoss; else -> CardSub }
         Row(Modifier.height(22.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(posTitle(p.instrumentId, info), fontSize = 16.sp, lineHeight = 22.sp, color = CardInk, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(posTitle(p.instrumentId, info), fontSize = 16.sp, lineHeight = 22.sp, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(8.dp))
-            Text(signedRupee(pnl), fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, color = pnlColor)
+            Text(signedRupee(pnl), fontSize = 16.sp, lineHeight = 22.sp, color = pnlInk(pnl, sub), maxLines = 1, softWrap = false)
         }
-        Row(Modifier.padding(top = 4.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Numbers at 14sp with their labels ("Lots", "Avg.", "LTP") at 12sp on the same baseline. The left side gives way first on a narrow screen.
+        Row(Modifier.padding(top = 3.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
             val n = booked?.first ?: kotlin.math.abs(p.quantity)
-            Text("$n ${if (n == 1) "Lot" else "Lots"}", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub)
-            Text("  •  ", fontSize = 12.sp, lineHeight = 18.sp, color = CardSub)
-            if (booked == null) Text("Avg. ${Fmt.rupee(p.avgPrice)}", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub) else Chip("CF", CardInk, CfBg)
-            Spacer(Modifier.weight(1f))
-            Text("LTP ${Fmt.rupee(q?.ltp)}  ", fontSize = 13.sp, lineHeight = 18.sp, color = CardSub)
-            Text("(${Fmt.pct(q?.changePct)})", fontSize = 13.sp, lineHeight = 18.sp, color = when (q?.changePct?.signum()) { 1 -> CardGain; -1 -> CardLoss; else -> CardSub }) // the day's move, not the P&L
+            val left = buildAnnotatedString {
+                append("$n"); withStyle(label) { append(if (n == 1) " Lot" else " Lots") }; append("  •  ")
+                if (booked == null) { withStyle(label) { append("Avg.") }; append(" ${Fmt.rupee(p.avgPrice)}") }
+            }
+            if (booked == null) Text(left, fontSize = 14.sp, lineHeight = 20.sp, color = sub, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+            else { Text(left, fontSize = 14.sp, lineHeight = 20.sp, color = sub, maxLines = 1); Chip("CF", ChipInk, cfTint()); Spacer(Modifier.weight(1f)) }
+            Text(buildAnnotatedString {
+                withStyle(label) { append("LTP") }; append(" ${Fmt.rupee(q?.ltp)}  ")
+                withStyle(SpanStyle(color = pnlInk(q?.changePct, sub))) { append("(${Fmt.pct(q?.changePct)})") } // the day's move, not the P&L
+            }, fontSize = 14.sp, lineHeight = 20.sp, color = sub, maxLines = 1, softWrap = false)
         }
-        Row(Modifier.padding(top = 8.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(top = 7.4.dp).height(20.dp), verticalAlignment = Alignment.CenterVertically) {
             if (booked == null) {
-                if (p.quantity > 0) Chip("BUY", BuyInk, BuyBg) else Chip("SELL", Loss); Spacer(Modifier.width(6.dp)); Chip("CF", CardInk, CfBg)
-                Text("  (1 Lot = ${info?.lotSize ?: "—"})", fontSize = 12.sp, lineHeight = 16.sp, color = CardInk, maxLines = 1, modifier = Modifier.weight(1f))
-                // Closes the whole position at market straight away (paper money, so no confirmation step).
-                Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onExit).padding(horizontal = 2.dp, vertical = 2.dp).testTag("one_tap_exit_${p.instrumentId}"),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("EXIT AT MARKET", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = ExitBlue)
-                }
+                if (p.quantity > 0) Chip("BUY", AssetGain, gainTint()) else Chip("SELL", AssetLoss, lossTint()); Spacer(Modifier.width(4.dp)); Chip("CF", ChipInk, cfTint())
+                Text("(1 Lot = ${info?.lotSize ?: "—"})", fontSize = 11.sp, lineHeight = 14.sp, color = slate, maxLines = 1, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                // Closes the whole position at market straight away (paper money, so no confirmation step). Flush with the card's right edge, a little below the chips' line.
+                Text("EXIT AT MARKET", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = Accent, maxLines = 1, softWrap = false,
+                    modifier = Modifier.offset(y = 2.dp).clip(RoundedCornerShape(6.dp)).clickable(onClick = onExit).padding(start = 6.dp, top = 2.dp, bottom = 2.dp).testTag("one_tap_exit_${p.instrumentId}"))
             } else {
-                Text("Buy ${Fmt.rupee(booked.second)}", fontSize = 14.sp, lineHeight = 18.sp, color = ink, modifier = Modifier.weight(1f))
-                Text("Sell ${Fmt.rupee(booked.third)}", fontSize = 14.sp, lineHeight = 18.sp, color = ink)
+                Text(buildAnnotatedString { withStyle(label) { append("Buy") }; append(" ${Fmt.rupee(booked.second)}") }, fontSize = 14.sp, lineHeight = 20.sp, color = slate, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(buildAnnotatedString { withStyle(label) { append("Sell") }; append(" ${Fmt.rupee(booked.third)}") }, fontSize = 14.sp, lineHeight = 20.sp, color = slate, maxLines = 1)
             }
         }
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
-/** The muted indigo of the Positions toolbar and EXIT AT MARKET. */
-private val ExitBlue = androidx.compose.ui.graphics.Color(0xFF3754B3)
-
-/** Position card text: charcoal title, grey second line, softer profit green and loss red. */
-private val CardInk = androidx.compose.ui.graphics.Color(0xFF0F1519)
-private val CardSub = androidx.compose.ui.graphics.Color(0xFF3E4954)
-private val BuyInk = androidx.compose.ui.graphics.Color(0xFF297B67)
-private val BuyBg = androidx.compose.ui.graphics.Color(0xFFDCF0E8)
-private val CfBg = androidx.compose.ui.graphics.Color(0xFFF0F4F8)
-private val CardGain = androidx.compose.ui.graphics.Color(0xFF138971)
-private val CardLoss = androidx.compose.ui.graphics.Color(0xFFAD5C58)
-private val TotalCheck = androidx.compose.ui.graphics.Color(0xFF007E62)
+/** The dark slate of a position card's third line (the lot size, a closed card's Buy / Sell) and of the CF chip's text. */
+private val ChipInk = Color(0xFF1E2630)
+@Composable private fun slateInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else ChipInk
+/** Chip and Total-bar tints in the light theme: the gain green and loss red at 12.5% on white, and the pale page grey behind CF. */
+@Composable private fun gainTint() = if (androidx.compose.foundation.isSystemInDarkTheme()) AssetGain.copy(alpha = 0.22f) else Color(0xFFDFF2EE)
+@Composable private fun lossTint() = if (androidx.compose.foundation.isSystemInDarkTheme()) AssetLoss.copy(alpha = 0.22f) else Color(0xFFF9E8E8)
+@Composable private fun cfTint() = if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFFD5D9E2) else Color(0xFFF5F6FB)
 
 private enum class HoldTab(val label: String) { OVERVIEW("Overview"), EQUITY("Equity"), FUNDS("Mutual Funds"), PICKS("Investment Picks") }
 private val WealthTop = androidx.compose.ui.graphics.Color(0xFF2F3E52)
@@ -325,18 +326,18 @@ private val WealthBody = androidx.compose.ui.graphics.Color(0xFF2A394E)
 private val WealthStrip = androidx.compose.ui.graphics.Color(0xFF202B3F)
 private val WealthGain = androidx.compose.ui.graphics.Color(0xFF45B5A0)
 private val WealthLoss = androidx.compose.ui.graphics.Color(0xFFF16564)
-/** The Portfolio's own loss red and gain green on white (Overview's Assets rows, Equity cards), as measured from the reference. */
-private val AssetLoss = androidx.compose.ui.graphics.Color(0xFFD24B4A)
-private val AssetGain = androidx.compose.ui.graphics.Color(0xFF009175)
+/** The reference's loss red and gain green on white: Portfolio (Overview's Assets rows, Equity cards), position cards and the index strip. */
+internal val AssetLoss = androidx.compose.ui.graphics.Color(0xFFD24B4A)
+internal val AssetGain = androidx.compose.ui.graphics.Color(0xFF009175)
 /** [AssetGain], [AssetLoss], or [neutral] for zero and unknown. */
-private fun pnlInk(v: BigDecimal?, neutral: androidx.compose.ui.graphics.Color) = when { v == null || v.signum() == 0 -> neutral; v.signum() > 0 -> AssetGain; else -> AssetLoss }
+internal fun pnlInk(v: BigDecimal?, neutral: androidx.compose.ui.graphics.Color) = when { v == null || v.signum() == 0 -> neutral; v.signum() > 0 -> AssetGain; else -> AssetLoss }
 
 /** The warm, faint tint of the summary card's diagonal band. */
 private val BandTint = androidx.compose.ui.graphics.Color(0xFFF8DEAE)
 
-/** Portfolio text inks in the light theme: near-black titles, blue-slate second lines and tab labels. Dark theme falls back to the scheme. */
-@Composable private fun titleInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color(0xFF182028)
-@Composable private fun subInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurfaceVariant else androidx.compose.ui.graphics.Color(0xFF46535D)
+/** Text inks in the light theme (Portfolio, position cards, index strip): near-black titles, blue-slate second lines and tab labels. Dark theme falls back to the scheme. */
+@Composable internal fun titleInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color(0xFF182028)
+@Composable internal fun subInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurfaceVariant else androidx.compose.ui.graphics.Color(0xFF46535D)
 @Composable private fun tabInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color(0xFF414E5F)
 /** Equity card inks in the light theme: dark slate values and grey ATP / LTP labels. */
 @Composable private fun cardInk() = if (androidx.compose.foundation.isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else androidx.compose.ui.graphics.Color(0xFF2E3940)
