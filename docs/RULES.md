@@ -22,6 +22,8 @@
 
 **Positions:** average-cost; increase re-averages; reduce realises vs average; reversal closes the old side at average and opens the remainder at the fill price. Delivery equity is long-only and shown in Holdings; futures/options show in Positions. Each exposure lives in exactly one position row, so it is never double-counted. The Positions screen shows today's book: a row's P&L (and TOTAL P&L) leaves out realised P&L and charges from fills before today (IST), so re-entering a contract closed on an earlier day starts from zero realised. An open position carried overnight still shows unrealised P&L against its average price.
 
+**Removing a position with no price (Positions → tap the position → Remove position):** only for an open position whose contract has no price at all (for example one bought on demo prices that the live source does not list), so it could never be exited. It closes at its own average price with no charges: no profit or loss is booked, the cash or margin it tied up comes back, and working orders on the contract are cancelled. Charges already paid on the way in stay paid. The closing order shows as filled and its fill is marked MANUAL. Refused while the contract has a price.
+
 **Margin (simulated, NOT broker margin):** futures 12% of notional; short options 15% of *strike* notional (uncovered short loss is not capped at premium). Orders that would leave available cash < 0 are rejected, except risk-reducing fills. Open (unfilled) orders do not reserve margin; the check repeats at fill time.
 
 **Charges:** illustrative brokerage/STT/exchange/SEBI/stamp/GST rates in `Config.kt` — assumptions, not official; toggle in Settings.

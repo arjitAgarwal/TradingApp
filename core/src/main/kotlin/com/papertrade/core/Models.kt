@@ -27,8 +27,8 @@ enum class OrderStatus { CREATED, OPEN, PARTIALLY_FILLED, FILLED, CANCELLED, REJ
     val isActive get() = this == OPEN || this == PARTIALLY_FILLED
 }
 
-/** Where a quote came from. Only LIVE quotes may be described as live in the UI. */
-enum class QuoteSource { LIVE, DELAYED, CACHED, DEMO, TEST }
+/** Where a quote came from. Only LIVE quotes may be described as live in the UI. MANUAL marks a fill made without any quote (a removed position). */
+enum class QuoteSource { LIVE, DELAYED, CACHED, DEMO, TEST, MANUAL }
 
 /**
  * Tradable instrument. [multiplier] is the lot size for derivatives and 1 for equity.
