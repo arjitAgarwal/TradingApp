@@ -71,6 +71,11 @@ class AppVM(private val c: AppContainer) : ViewModel() {
         val inst = info(p.instrumentId) ?: return
         placeOrder(inst, if (p.quantity > 0) Side.SELL else Side.BUY, OrderType.MARKET, kotlin.math.abs(p.quantity), null)
     }
+    /** Takes out a position that has no price to exit at, at its own buy price (no profit or loss). */
+    fun removePosition(p: Position) = viewModelScope.launch {
+        val r = c.trading.removeUnpriced(p.instrumentId, quotes.value[p.instrumentId])
+        messages.tryEmit(r.error ?: "Position removed at its buy price")
+    }
     fun saveSettings(s: AppSettings) = viewModelScope.launch { c.settingsStore.update(s) }
     fun setupFyers(appId: String, secret: String, redirectUri: String) { c.fyersAuth.setup(appId, secret, redirectUri); messages.tryEmit("FYERS app details saved on this device (encrypted)") }
     fun logoutFyers() { c.fyersAuth.logout(); messages.tryEmit("Logged out of FYERS") }
