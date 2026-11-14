@@ -45,24 +45,31 @@ object NavIcons {
     private fun PathBuilder.house() {
         moveTo(4.2f, 10.4f); lineTo(12f, 4.4f); lineTo(19.8f, 10.4f); lineTo(18f, 19.6f); lineTo(6f, 19.6f); close()
     }
-    private fun PathBuilder.door() { moveTo(12f, 15.5f); lineTo(12f, 17.5f) }
+    private fun PathBuilder.door() { moveTo(12f, 13f); lineTo(12f, 16.8f) }
 
     private fun PathBuilder.folderShape() {
-        moveTo(3.5f, 6.2f); arcTo(1.5f, 1.5f, 0f, false, true, 5f, 4.7f); lineTo(9.3f, 4.7f); lineTo(11.3f, 7.1f); lineTo(19f, 7.1f)
-        arcTo(1.5f, 1.5f, 0f, false, true, 20.5f, 8.6f); lineTo(20.5f, 17.1f); arcTo(1.5f, 1.5f, 0f, false, true, 19f, 18.6f)
-        lineTo(5f, 18.6f); arcTo(1.5f, 1.5f, 0f, false, true, 3.5f, 17.1f); close()
+        moveTo(3.5f, 6.8f); arcTo(1.5f, 1.5f, 0f, false, true, 5f, 5.3f); lineTo(9.3f, 5.3f); lineTo(11.3f, 7.7f); lineTo(19f, 7.7f)
+        arcTo(1.5f, 1.5f, 0f, false, true, 20.5f, 9.2f); lineTo(20.5f, 17.7f); arcTo(1.5f, 1.5f, 0f, false, true, 19f, 19.2f)
+        lineTo(5f, 19.2f); arcTo(1.5f, 1.5f, 0f, false, true, 3.5f, 17.7f); close()
     }
-    private fun PathBuilder.dash() { moveTo(10f, 13.9f); lineTo(14f, 13.9f) }
+    private fun PathBuilder.dash() { moveTo(10f, 14.5f); lineTo(14f, 14.5f) }
 
     private fun PathBuilder.rupee() {
-        moveTo(7f, 11f); lineTo(11.5f, 11f); moveTo(7f, 12.8f); lineTo(11.5f, 12.8f); moveTo(7.6f, 11f); curveTo(10.6f, 11f, 10.6f, 14.6f, 7.6f, 14.6f); lineTo(10.8f, 17.4f)
+        moveTo(7.1f, 11.2f); lineTo(10.4f, 11.2f); moveTo(7.1f, 13f); lineTo(10.4f, 13f); moveTo(7.6f, 11.2f); curveTo(10.1f, 11.2f, 10.1f, 14.7f, 7.6f, 14.7f); lineTo(9.9f, 17.1f)
+    }
+
+    /** A five-pointed star outline round ([cx], [cy]): points at radius [r], inner corners at [inner]. */
+    private fun PathBuilder.starAt(cx: Float, cy: Float, r: Float, inner: Float) {
+        for (i in 0 until 10) { val a = Math.toRadians(-90.0 + 36.0 * i); val d = if (i % 2 == 0) r else inner
+            val x = cx + (d * Math.cos(a)).toFloat(); val y = cy + (d * Math.sin(a)).toFloat(); if (i == 0) moveTo(x, y) else lineTo(x, y) }
+        close()
     }
 
     // Bottom-bar line widths come to about 1.4 dp on screen at each icon's own size (HOME 25, WATCHLIST and ORDERS 22, PORTFOLIO 26, ACCOUNT 27 dp).
-    val home = icon("NavHome") { line(1.36f) { house() }; line(1.36f) { door() } }
-    val homeSelected = icon("NavHomeSelected") { solid(width = 1.36f) { house() }; line(1.36f, Color.White) { door() } }
+    val home = icon("NavHome") { line(1.36f) { house() }; line(1.5f) { door() } }
+    val homeSelected = icon("NavHomeSelected") { solid(width = 1.36f) { house() }; line(1.5f, Color.White) { door() } }
 
-    val star = icon("NavStar") { line(1.55f) { roundRect(3.5f, 3.5f, 20.5f, 20.5f, 2f) }; line(1.35f) { star() } }
+    val star = icon("NavStar") { line(1.55f) { roundRect(3.5f, 3.5f, 20.5f, 20.5f, 1.2f) }; line(1.6f) { starAt(12f, 12.5f, 4.5f, 2.25f) } }
     val starSelected = icon("NavStarSelected") {
         path(fill = SolidColor(Accent)) { roundRect(3.5f, 3.5f, 20.5f, 20.5f, 2f) }
         path(fill = SolidColor(Color.White), stroke = SolidColor(Color.White), strokeLineWidth = 0.8f, strokeLineJoin = StrokeJoin.Round) { star() }
@@ -78,17 +85,22 @@ object NavIcons {
         }
         line(1.55f) { roundRect(9f, 3f, 15f, 6.5f, 1f) }
     }
-    /** A solid board with its clip as a notch across the top, as in the reference's selected ORDERS. */
+    /** A solid board with a hollow clip tab standing on its top edge, as in the reference's selected ORDERS. */
     val clipboardSelected = icon("NavClipboardSelected") {
-        solid { roundRect(5.5f, 4.5f, 18.5f, 21f, 2f) }
-        line(1.4f, Color.White) { moveTo(9.5f, 6.8f); lineTo(14.5f, 6.8f) }
+        path(fill = SolidColor(Accent)) { roundRect(4.85f, 3.6f, 19.15f, 22.3f, 2.3f) }
+        path(fill = SolidColor(Accent)) { roundRect(8.2f, 2f, 15.8f, 8f, 1.5f) }
+        path(fill = SolidColor(Color.White)) { roundRect(9.4f, 3.4f, 14.6f, 5.05f, 0.8f) }
     }
 
     val wallet = icon("NavWallet") {
-        line(1.26f) { roundRect(3.5f, 7.5f, 19.5f, 20f, 2f) }
-        line(1.26f) { moveTo(6f, 7.5f); lineTo(15f, 4f); lineTo(16.5f, 7.5f) }
-        line(1.26f) { roundRect(14.5f, 11.5f, 21f, 16f, 1.5f) }
-        line(1.15f) { rupee() }
+        // The body, open on the right where the clasp crosses its edge; a card slanting out of the top; the clasp pill.
+        line(1.26f) {
+            moveTo(20f, 12.5f); lineTo(20f, 9.85f); arcTo(1.8f, 1.8f, 0f, false, false, 18.2f, 8.05f); lineTo(5.3f, 8.05f); arcTo(1.8f, 1.8f, 0f, false, false, 3.5f, 9.85f)
+            lineTo(3.5f, 18.2f); arcTo(1.8f, 1.8f, 0f, false, false, 5.3f, 20f); lineTo(18.2f, 20f); arcTo(1.8f, 1.8f, 0f, false, false, 20f, 18.2f); lineTo(20f, 15.5f)
+        }
+        line(1.26f) { moveTo(7.7f, 8.05f); lineTo(14.7f, 3.7f); lineTo(16.9f, 8.05f); moveTo(12.3f, 8.05f); lineTo(15.8f, 5.9f) }
+        line(1.26f) { roundRect(16f, 12.5f, 21f, 15.5f, 1.5f) }
+        line(1.1f) { rupee() }
     }
 
     // Portfolio header and summary card.
@@ -119,19 +131,25 @@ object NavIcons {
 
     // Positions toolbar.
 
-    /** Three upright sliders, each line broken around its knob. */
-    val sliders = icon("Sliders") {
-        line(1.6f) {
-            moveTo(6f, 4f); lineTo(6f, 12.5f); moveTo(6f, 15.5f); lineTo(6f, 20f); moveTo(4.2f, 14f); lineTo(7.8f, 14f)
-            moveTo(12f, 4f); lineTo(12f, 6.5f); moveTo(12f, 9.5f); lineTo(12f, 20f); moveTo(10.2f, 8f); lineTo(13.8f, 8f)
-            moveTo(18f, 4f); lineTo(18f, 13.5f); moveTo(18f, 16.5f); lineTo(18f, 20f); moveTo(16.2f, 15f); lineTo(19.8f, 15f)
+    private fun PathBuilder.rect(l: Float, t: Float, r: Float, b: Float) { moveTo(l, t); lineTo(r, t); lineTo(r, b); lineTo(l, b); close() }
+
+    /**
+     * Three upright sliders, square-ended, 16.5 x 13.5 dp of ink with no margin. Each is a line, a gap, then a wide knob
+     * with a short stub beyond it; the outer two have the knob near the bottom and the middle one near the top.
+     */
+    val sliders = tight("Sliders", 16.5f, 13.5f) {
+        path(fill = SolidColor(Color.Black)) {
+            listOf(2.25f to false, 8.25f to true, 14.25f to false).forEach { (x, flipped) ->
+                fun y(v: Float) = if (flipped) 13.5f - v else v
+                rect(x - 0.7f, y(0f), x + 0.7f, y(7.55f)); rect(x - 2.25f, y(9f), x + 2.25f, y(11.25f)); rect(x - 0.7f, y(11.25f), x + 0.7f, y(13.5f))
+            }
         }
     }
 
-    /** A thin magnifier: open circle, short handle. */
-    val search = icon("Search") {
-        line(1.6f) { moveTo(18f, 10.5f); arcTo(7f, 7f, 0f, true, true, 4f, 10.5f); arcTo(7f, 7f, 0f, true, true, 18f, 10.5f); close() }
-        line(1.6f) { moveTo(16f, 16f); lineTo(20.5f, 20.5f) }
+    /** A thin magnifier: a wide open circle and a short, slightly finer handle, 17.9 dp of ink with no margin. */
+    val search = tight("Search", 17.9f, 17.9f) {
+        line(1.6f) { moveTo(15f, 7.9f); arcTo(7.1f, 7.1f, 0f, true, true, 0.8f, 7.9f); arcTo(7.1f, 7.1f, 0f, true, true, 15f, 7.9f); close() }
+        line(1.45f) { moveTo(12.9f, 12.9f); lineTo(17.15f, 17.15f) }
     }
 
     /**
