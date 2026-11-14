@@ -201,6 +201,7 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
             // An index option opens its index chain; a stock option opens that stock's chain (stock F&O is all on NSE).
             onChain = u?.let { { sel = null; nav.chain(it) } } ?: vm.info(p.instrumentId)?.underlying?.let { n -> { sel = null; nav.stockChain("NSE:$n-EQ") } },
             onExit = { sel = null; vm.closePosition(p) },
+            onRemove = { sel = null; vm.removePosition(p) },
             onBuy = { sel = null; nav.order(p.instrumentId, Side.BUY) })
     }
     if (confirmExitAll) AlertDialog(onDismissRequest = { confirmExitAll = false }, title = { Text("Exit all positions?") },
@@ -254,10 +255,11 @@ private val ChipBlue = androidx.compose.ui.graphics.Color(0xFF5367FF)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PositionSheet(vm: AppVM, p: Position, pnl: BigDecimal, ltp: BigDecimal?, v: PositionValuation?, underlying: String?,
-                          onClose: () -> Unit, onOpen: () -> Unit, onChart: (() -> Unit)?, onChain: (() -> Unit)?, onExit: () -> Unit, onBuy: () -> Unit) {
+                          onClose: () -> Unit, onOpen: () -> Unit, onChart: (() -> Unit)?, onChain: (() -> Unit)?, onExit: () -> Unit, onRemove: () -> Unit, onBuy: () -> Unit) {
     val info = vm.info(p.instrumentId); val units = p.quantity * (info?.lotSize ?: 1)
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
-    var details by remember { mutableStateOf(false) }
+    var details by remember { mutableStateOf(false) }; var confirmRemove by remember { mutableStateOf(false) }
+    val unpriced = p.isOpen && (ltp == null || ltp.signum() <= 0) // no price at all: Exit can never fill, so offer Remove
     // Open fully: half-open would hide Buy/Exit below the screen edge.
     ModalBottomSheet(onDismissRequest = onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
         Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp).padding(bottom = 16.dp).testTag("position_sheet")) {
@@ -299,8 +301,13 @@ private fun PositionSheet(vm: AppVM, p: Position, pnl: BigDecimal, ltp: BigDecim
                 Button(onExit, Modifier.weight(1f).height(52.dp).testTag("pos_exit"), enabled = p.isOpen, shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Loss, contentColor = androidx.compose.ui.graphics.Color.White)) { Text("Exit", fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
             }
+            if (unpriced) TextButton({ confirmRemove = true }, Modifier.fillMaxWidth().padding(top = 4.dp).testTag("pos_remove")) { Text("No price for this contract · Remove position", fontSize = 14.sp, color = dim) }
         }
     }
+    if (confirmRemove) AlertDialog(onDismissRequest = { confirmRemove = false }, title = { Text("Remove position?") },
+        text = { Text("This contract has no price, so it cannot be exited. It will be closed at its buy price of ${Fmt.rupee(p.avgPrice)} with no profit or loss, and the money it holds comes back.") },
+        confirmButton = { TextButton({ confirmRemove = false; onRemove() }, Modifier.testTag("confirm_pos_remove")) { Text("Remove") } },
+        dismissButton = { TextButton({ confirmRemove = false }) { Text("Cancel") } })
 }
 
 /** A sheet shortcut row: icon, label, optional trailing control, hairline under the label. Greyed when [onClick] is null. */
