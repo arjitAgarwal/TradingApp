@@ -147,15 +147,16 @@ private enum class PosFilter(val label: String) { ALL("All positions"), OPEN("Op
 
 /**
  * Today's positions: a toolbar (filter, search, Secure Exit, Exit all), one card per F&O position with One Tap Exit,
- * closed positions greyed below with today's buy and sell averages, and a Total bar pinned to the bottom (tap it for
+ * closed positions greyed below with their average buy and sell (carried-in lots included), and a Total bar pinned to the bottom (tap it for
  * realised/unrealised). Tapping a card opens the same quote sheet as a watchlist row.
  */
 @Composable
 fun PositionsScreen(vm: AppVM, nav: Nav) {
     val acc by vm.account.collectAsState(); val val_ by vm.valuation.collectAsState(); val quotes by vm.quotes.collectAsState()
     val now by vm.now.collectAsState(); val today = now.atZone(MarketHours.IST).toLocalDate()
-    // Last fill per instrument, to know which day a closed position was booked.
-    val lastFill = acc?.fills?.groupBy { it.instrumentId }?.mapValues { (_, f) -> f.maxOf { it.time }.atZone(MarketHours.IST).toLocalDate() } ?: emptyMap()
+    // Each contract's fills; the last one's day tells when a closed position was booked.
+    val fillsOf = acc?.fills?.groupBy { it.instrumentId } ?: emptyMap()
+    val lastFill = fillsOf.mapValues { (_, f) -> f.maxOf { it.time }.atZone(MarketHours.IST).toLocalDate() }
     // Only today's book: expired contracts drop off, and closed positions show only on the day they were closed.
     val all = acc?.positions?.values?.filter { p -> vm.info(p.instrumentId)?.segment != Segment.EQUITY && !p.instrumentId.endsWith("-EQ") }
         ?.filter { p -> vm.info(p.instrumentId)?.expiry?.let { !it.isBefore(today) } ?: true }
@@ -171,11 +172,6 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
         ?.mapValues { (_, f) -> f.fold(BigDecimal.ZERO) { s, x -> s + x.realizedGross } to f.fold(BigDecimal.ZERO) { s, x -> s + x.charges } } ?: emptyMap()
     val pnl = all.associate { p -> p.instrumentId to ((val_?.positions?.firstOrNull { it.instrumentId == p.instrumentId }?.netPnl ?: p.realizedNet)
         - (earlier[p.instrumentId]?.let { (g, c) -> g - c } ?: BigDecimal.ZERO)) }
-    // Today's fills per contract: lots traded and the average buy and sell prices on the closed cards.
-    val todays = acc?.fills?.filter { it.time.atZone(MarketHours.IST).toLocalDate() == today }?.groupBy { it.instrumentId } ?: emptyMap()
-    fun avg(id: String, side: Side) = todays[id]?.filter { it.side == side }?.takeIf { it.isNotEmpty() }
-        ?.let { f -> Dec.div(f.fold(BigDecimal.ZERO) { s, x -> s + x.price * BigDecimal(x.quantity) }, BigDecimal(f.sumOf { it.quantity })) }
-    fun lots(id: String) = todays[id].orEmpty().let { f -> maxOf(f.filter { it.side == Side.BUY }.sumOf { it.quantity }, f.filter { it.side == Side.SELL }.sumOf { it.quantity }) }
     val open = all.filter { it.isOpen }; val closed = all.filterNot { it.isOpen }
     // Open positions are always streamed; closed ones are not, so keep their LTP live while they are listed here.
     val closedSyms = closed.map { it.instrumentId }.toSet()
@@ -214,7 +210,7 @@ fun PositionsScreen(vm: AppVM, nav: Nav) {
                 PositionCard(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId], null, onExit = { vm.closePosition(p) }) { sel = p }
             }
             items(shownClosed, key = { it.instrumentId }) { p ->
-                PositionCard(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId], Triple(lots(p.instrumentId), avg(p.instrumentId, Side.BUY), avg(p.instrumentId, Side.SELL)), onExit = {}) { sel = p }
+                PositionCard(vm, p, pnl.getValue(p.instrumentId), quotes[p.instrumentId], closedBook(fillsOf[p.instrumentId].orEmpty(), today), onExit = {}) { sel = p }
             }
             if (shownOpen.isEmpty() && shownClosed.isEmpty()) item { Text("No positions match", color = dim, modifier = Modifier.padding(16.dp)) }
         }
@@ -252,6 +248,23 @@ private fun signedRupee(v: BigDecimal) = (if (v.signum() > 0) "+" else "") + Fmt
 private val posDate = java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy", java.util.Locale.ENGLISH)
 
 /** "NIFTY 29-Sep-26 22450 PE", or "RELIANCE 24-Nov-26" for a future (no FUT tag): the name at full size, the contract a step smaller; a stock is just its ticker. */
+/**
+ * A closed position's book for its card: lots, then the average buy and sell prices. It is today's trades plus what the position
+ * carried into today, counted as bought (sold, for a short) at its average cost when the day began, so lots bought on an earlier
+ * day and sold today show the same average buy the P&L was booked against. [fills] are one contract's, in any order.
+ */
+internal fun closedBook(fills: List<Fill>, today: java.time.LocalDate): Triple<Int, BigDecimal?, BigDecimal?> {
+    val (before, todays) = fills.sortedBy { it.time }.partition { it.time.atZone(MarketHours.IST).toLocalDate().isBefore(today) }
+    // Replays the earlier fills with the engine's own average-cost rules (multiplier and charges don't change the average).
+    val carried = before.fold(Position(fills.firstOrNull()?.instrumentId ?: "")) { p, f -> PositionMath.apply(p, f.side, f.quantity, f.price, 1, BigDecimal.ZERO).position }
+    val legs = todays.map { Triple(it.side, it.quantity, it.price) } +
+        listOfNotNull(carried.takeIf { it.isOpen }?.let { Triple(if (it.quantity > 0) Side.BUY else Side.SELL, kotlin.math.abs(it.quantity), it.avgPrice) })
+    fun qty(side: Side) = legs.filter { it.first == side }.sumOf { it.second }
+    fun avg(side: Side) = legs.filter { it.first == side }.takeIf { it.isNotEmpty() }
+        ?.let { l -> Dec.div(l.fold(BigDecimal.ZERO) { s, x -> s + x.third * BigDecimal(x.second) }, BigDecimal(qty(side))) }
+    return Triple(maxOf(qty(Side.BUY), qty(Side.SELL)), avg(Side.BUY), avg(Side.SELL))
+}
+
 private fun posTitle(id: String, info: com.papertrade.app.data.market.InstrumentInfo?) = buildAnnotatedString {
     val e = info?.expiry
     if (e == null) { append(id.substringAfter(':').removeSuffix("-EQ")); return@buildAnnotatedString }
@@ -267,7 +280,7 @@ private fun Chip(text: String, color: Color, bg: Color) = Box(Modifier.height(19
  * Open:   NIFTY 29-Sep-26 22450 PE ......... +₹191.10      Closed (greyed):  NIFTY 06-Oct-26 22300 PE ... +₹572.00
  *         1 Lot • Avg. ₹8.18 ..... LTP ₹9.10 (+133.33%)                      1 Lot • CF ...... LTP ₹46.10 (231.65%)
  *         [BUY] [CF] (1 Lot = 65) ...... EXIT AT MARKET                      Buy ₹37.45 ............... Sell ₹46.25
- * [booked] is (lots traded today, average buy, average sell) for a closed position, null for an open one.
+ * [booked] is (lots, average buy, average sell) of a closed position's book (see [closedBook]), null for an open one.
  */
 @Composable
 private fun PositionCard(vm: AppVM, p: Position, pnl: BigDecimal, q: com.papertrade.app.data.market.MarketQuote?, booked: Triple<Int, BigDecimal?, BigDecimal?>?,
