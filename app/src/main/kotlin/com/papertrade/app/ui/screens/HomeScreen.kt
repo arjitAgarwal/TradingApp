@@ -43,16 +43,16 @@ import com.papertrade.app.ui.components.NavIcons
 import com.papertrade.app.ui.theme.Accent
 
 // HOME, laid out from the reference at 360 dp: grey bands between white sections, hairline cards, near-black titles.
-private val HomeGrey = Color(0xFFF5F6FA); private val HomeLine = Color(0xFFE4E6EA); private val HomeDisc = Color(0xFFF3F6FA)
+private val HomeGrey = Color(0xFFF5F6FA); private val HomeLine = Color(0xFFE4E6EA); internal val HomeDisc = Color(0xFFF3F6FA)
 private val HomeTitle = Color(0xFF3C3F47); private val HomeText = Color(0xFF282B33); private val HomeLabel = Color(0xFF42454E); private val ShortcutInk = Color(0xFF1E2129)
 private val HomeTabInk = Color(0xFF545D6B); private val HomeHint = Color(0xFFAEB8C3); private val GlyphInk = Color(0xFF22262F)
-private val Lavender = Color(0xFFE6EBFA); private val Mint = Color(0xFFDDF3ED); private val OverviewFill = Color(0xFFF2F5FB)
+private val Lavender = Color(0xFFE6EBFA); internal val Mint = Color(0xFFDDF3ED); private val OverviewFill = Color(0xFFF2F5FB)
 private val ProfileDot = Color(0xFFDC4A52)
 private val CardShape = RoundedCornerShape(6.dp)
 
-@Composable private fun bandColor() = if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceVariant else HomeGrey
+@Composable internal fun bandColor() = if (isSystemInDarkTheme()) MaterialTheme.colorScheme.surfaceVariant else HomeGrey
 @Composable private fun lineColor() = if (isSystemInDarkTheme()) MaterialTheme.colorScheme.outlineVariant else HomeLine
-@Composable private fun ink(c: Color) = if (isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else c
+@Composable internal fun ink(c: Color) = if (isSystemInDarkTheme()) MaterialTheme.colorScheme.onSurface else c
 
 /** Large caps that fill "Stocks You're Interested In" after the watchlists' own stocks. */
 private val PopularStocks = listOf("NSE:RELIANCE-EQ", "NSE:HDFCBANK-EQ", "NSE:TCS-EQ", "NSE:INFY-EQ", "NSE:SBIN-EQ")
@@ -62,10 +62,10 @@ internal enum class HomeTab(val label: String, val x: Float) { STOCKS("Stocks", 
 
 /**
  * HOME's header: a round Products button (a menu of the index option chains and futures), the search box, and a round
- * Profile button that opens Account. Each round button is a 32 dp disc over a 10 sp label; the box is 40 dp tall.
+ * Profile button that switches to the ACCOUNT tab. Each round button is a 32 dp disc over a 10 sp label; the box is 40 dp tall.
  */
 @Composable
-internal fun HomeHeader(nav: Nav, onSearch: () -> Unit) {
+internal fun HomeHeader(nav: Nav, onSearch: () -> Unit, onProfile: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth().height(65.dp).background(MaterialTheme.colorScheme.surface)) {
         Box {
@@ -75,7 +75,7 @@ internal fun HomeHeader(nav: Nav, onSearch: () -> Unit) {
                 Underlying.values().forEach { u -> DropdownMenuItem({ Text("${u.displayName} Futures") }, { menu = false; nav.futures(u) }, Modifier.testTag("products_futures_${u.name}")) }
             }
         }
-        Box(Modifier.align(Alignment.TopEnd)) { HeaderButton("Profile", "header_profile", nav.account) { drawProfile() } }
+        Box(Modifier.align(Alignment.TopEnd)) { HeaderButton("Profile", "header_profile", onProfile) { drawProfile() } }
         // 56 dp in from each side (248 dp wide at 360 dp); the magnifier's ink centred 18 dp in, the hint 36 dp in.
         Row(Modifier.padding(start = 56.dp, end = 56.dp, top = 11.5.dp).fillMaxWidth().height(40.dp).clip(RoundedCornerShape(9.dp))
             .border(1.dp, lineColor(), RoundedCornerShape(9.dp)).clickable(onClick = onSearch).testTag("header_search"), verticalAlignment = Alignment.CenterVertically) {
@@ -284,7 +284,7 @@ private fun OverviewCard(vm: AppVM, nav: Nav) {
     }
 }
 
-private val DrawInk = Color(0xFF2B2D3A); private val TiePurple = Color(0xFF4A2FA0); private val CoinGreen = Color(0xFF2A9A7F)
+internal val DrawInk = Color(0xFF2B2D3A); private val TiePurple = Color(0xFF4A2FA0); internal val CoinGreen = Color(0xFF2A9A7F)
 
 /**
  * The analysts card's drawing, in the card's own dp (a 64 dp square at its left): an outlined head and shoulders with a
@@ -317,7 +317,7 @@ private fun DrawScope.drawGift() {
 }
 
 /** Refer's drawing on its 40 dp disc: a green ₹ coin above an open hand drawn in outline, with a cuff line at the wrist. */
-private fun DrawScope.drawRefer() {
+internal fun DrawScope.drawRefer() {
     val u = size.width / 40f; val line = Stroke(1.2f * u, cap = StrokeCap.Round, join = StrokeJoin.Round); val c = Offset(23.2f * u, 12.8f * u)
     drawCircle(CoinGreen, 5.6f * u, c)
     drawPath(Path().apply { val x = c.x; val y = c.y; val k = u

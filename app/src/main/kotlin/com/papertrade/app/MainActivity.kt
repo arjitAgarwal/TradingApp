@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
                 val vm: AppVM = viewModel(factory = Factory(container))
                 val n = remember(nav) {
                     Nav(index = { nav.navigate("index/${it.name}") }, stock = { nav.navigate("stock/${Uri.encode(it)}") }, chain = { nav.navigate("chain/${it.name}") },
-                        futures = { nav.navigate("futures/${it.name}") }, contract = { nav.navigate("contract/${Uri.encode(it)}") }, account = { nav.navigate("account") }, back = { nav.popBackStack() }, fyersLogin = { nav.navigate("fyers_login") }, upstoxLogin = { nav.navigate("upstox_login") },
+                        futures = { nav.navigate("futures/${it.name}") }, contract = { nav.navigate("contract/${Uri.encode(it)}") }, back = { nav.popBackStack() }, fyersLogin = { nav.navigate("fyers_login") }, upstoxLogin = { nav.navigate("upstox_login") },
                         order = { s, side -> nav.navigate("order/${Uri.encode(s)}/${side.name}") }, stockChain = { nav.navigate("stockchain/${Uri.encode(it)}") })
                 }
                 val sym = navArgument("s") { type = NavType.StringType }; val und = navArgument("u") { type = NavType.StringType }
@@ -45,7 +45,6 @@ class MainActivity : ComponentActivity() {
                     composable("futures/{u}", listOf(und)) { FuturesScreen(container, vm, Underlying.valueOf(it.arguments!!.getString("u")!!), n) }
                     composable("stock/{s}", listOf(sym)) { StockScreen(container, vm, it.arguments!!.getString("s")!!, n) }
                     composable("contract/{s}", listOf(sym)) { ContractScreen(vm, it.arguments!!.getString("s")!!, n) }
-                    composable("account") { AccountScreen(vm, n) }
                     composable("fyers_login") { FyersLoginScreen(vm, n) }
                     composable("upstox_login") { UpstoxLoginScreen(vm, n) }
                     composable("order/{s}/{side}", listOf(sym, navArgument("side") { type = NavType.StringType })) {

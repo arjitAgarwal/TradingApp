@@ -102,6 +102,13 @@ object NavIcons {
         line(1.26f) { roundRect(16f, 12.5f, 21f, 15.5f, 1.5f) }
         line(1.1f) { rupee() }
     }
+    /** The selected ACCOUNT: a solid blue body behind the same card outline, with a white ₹ and a white clasp inside its right edge. */
+    val walletSelected = icon("NavWalletSelected") {
+        line(1.26f, Accent) { moveTo(7.7f, 8.05f); lineTo(14.7f, 3.7f); lineTo(16.9f, 8.05f); moveTo(12.3f, 8.05f); lineTo(15.8f, 5.9f) }
+        solid(width = 1.26f) { roundRect(3.5f, 8.05f, 20.4f, 20f, 1.8f) }
+        path(fill = SolidColor(Color.White)) { roundRect(16.1f, 12.75f, 19.6f, 15.25f, 1.25f) }
+        line(1.1f, Color.White) { rupee() }
+    }
 
     // Portfolio header and summary card.
 
