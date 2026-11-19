@@ -96,12 +96,13 @@ fun ChangeBadge(change: java.math.BigDecimal?) {
         modifier = Modifier.background(c.copy(alpha = 0.12f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
-private enum class Section { HOME, WATCHLIST, PORTFOLIO, ORDERS }
+private enum class Section { HOME, WATCHLIST, PORTFOLIO, ORDERS, ACCOUNT }
 
 /**
  * A header per section (HOME's Products / search / Profile over its category tabs, WATCHLIST's search bar, the tabbed
- * Orders and Portfolio headers), the two index cards and a five-item bottom bar (HOME, WATCHLIST, PORTFOLIO, ORDERS,
- * ACCOUNT). The app opens on WATCHLIST; ACCOUNT opens the settings screen.
+ * Orders and Portfolio headers; ACCOUNT has its own heading in its page), the two index cards and a five-item bottom bar
+ * (HOME, WATCHLIST, PORTFOLIO, ORDERS, ACCOUNT). The app opens on WATCHLIST. Home's Profile, Portfolio's profile icon and
+ * the ⋮ buttons all switch to ACCOUNT.
  */
 @Composable
 fun MainScreen(vm: AppVM, nav: Nav) {
@@ -110,6 +111,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     // Search takes over the page below the header until closed (back arrow or system back).
     var searching by rememberSaveable { mutableStateOf(false) }; var query by rememberSaveable { mutableStateOf("") }
     androidx.activity.compose.BackHandler(searching) { searching = false; query = "" }
+    val openAccount = { section = Section.ACCOUNT; searching = false; query = "" }
     val settings by vm.settings.collectAsState(); val feed by vm.feed.collectAsState()
     val fyersAuth by vm.fyersAuth.collectAsState(); val upstoxAuth by vm.upstoxAuth.collectAsState()
     val upstox = settings.liveSource == LiveSource.UPSTOX
@@ -118,25 +120,28 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     LaunchedEffect(Unit) { vm.messages.collect { snack.showSnackbar(it) } }
     Scaffold(snackbarHost = { SnackbarHost(snack) }, topBar = {
         Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
-            // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode and the header's tint on Portfolio and Orders.
-            Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else if ((section == Section.PORTFOLIO || section == Section.ORDERS) && !searching) PortfolioTint else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
+            // Android 15+ draws the app under the status bar: keep the clock clear, in the banner's colour in demo mode, the header's tint on Portfolio and Orders and the page grey on Account.
+            Spacer(Modifier.fillMaxWidth().background(if (settings.dataMode == DataMode.DEMO) Demo else if ((section == Section.PORTFOLIO || section == Section.ORDERS) && !searching) PortfolioTint
+                else if (section == Section.ACCOUNT) bandColor() else MaterialTheme.colorScheme.surface).windowInsetsTopHeight(WindowInsets.statusBars))
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
-            if (section == Section.ORDERS && !searching) OrdersTabs(ordersTab, { ordersTab = it }, onSearch = { searching = true }, onMenu = nav.account)
-            else if (section == Section.PORTFOLIO && !searching) OrdersTabs(portfolioTab, { portfolioTab = it }, onSearch = { searching = true }, onMenu = nav.account, labels = listOf("Holdings", "My Wealth"), onProfile = nav.account)
-            else if (section == Section.HOME && !searching) { HomeHeader(nav, onSearch = { searching = true }); HomeTabs(homeTab) { homeTab = it } }
-            else SearchBar(searching, query, { query = it }, onOpen = { searching = true }, onClose = { searching = false; query = "" })
-            if (!searching && section != Section.PORTFOLIO) { IndexCards(vm, nav.index); HorizontalDivider() } // Portfolio opens straight on its own header, as in the reference
-            if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
+            if (section == Section.ORDERS && !searching) OrdersTabs(ordersTab, { ordersTab = it }, onSearch = { searching = true }, onMenu = openAccount)
+            else if (section == Section.PORTFOLIO && !searching) OrdersTabs(portfolioTab, { portfolioTab = it }, onSearch = { searching = true }, onMenu = openAccount, labels = listOf("Holdings", "My Wealth"), onProfile = openAccount)
+            else if (section == Section.HOME && !searching) { HomeHeader(nav, onSearch = { searching = true }, onProfile = openAccount); HomeTabs(homeTab) { homeTab = it } }
+            else if (section != Section.ACCOUNT) SearchBar(searching, query, { query = it }, onOpen = { searching = true }, onClose = { searching = false; query = "" })
+            // Portfolio opens straight on its own header and Account on its heading, as in the references.
+            if (!searching && section != Section.PORTFOLIO && section != Section.ACCOUNT) { IndexCards(vm, nav.index); HorizontalDivider() }
+            if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) openAccount() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
                 Text(if (auth == LoginState.NEEDS_LOGIN) "$broker login needed for live prices. Tap here to log in." else "$broker is not set up yet. Tap to open settings.",
                     color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
             }
             if (feed.state != FeedState.CONNECTED) Text(feedMessage(feed.state, feed.message), color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
         }
-    }, bottomBar = { BottomBar(section, { section = it; searching = false; query = "" }, nav.account) }) { pad ->
+    }, bottomBar = { BottomBar(section) { section = it; searching = false; query = "" } }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             if (searching) SearchResults(vm, nav, query) else when (section) {
                 Section.HOME -> HomePage(vm, nav, homeTab, onViewAll = { section = Section.WATCHLIST }); Section.WATCHLIST -> WatchlistsPage(vm, nav)
                 Section.PORTFOLIO -> if (portfolioTab == 0) HoldingsScreen(vm, nav) else MyWealthScreen(vm); Section.ORDERS -> if (ordersTab == 0) OrdersScreen(vm) else PositionsScreen(vm, nav)
+                Section.ACCOUNT -> AccountPage(vm, nav)
             }
         }
     }
@@ -650,9 +655,9 @@ private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit
         dismissButton = { TextButton({ onDone(null) }) { Text("Cancel") } })
 }
 
-/** HOME, WATCHLIST, PORTFOLIO and ORDERS switch the main page; ACCOUNT opens settings. The selected item is blue, with no pill. */
+/** Each item switches the main page. The selected item is blue, with no pill. */
 @Composable
-private fun BottomBar(section: Section, onSection: (Section) -> Unit, onAccount: () -> Unit) {
+private fun BottomBar(section: Section, onSection: (Section) -> Unit) {
     // No hairline: a soft shadow fades up from the bar's top edge instead.
     Column(Modifier.drawBehind { val h = 3.dp.toPx(); drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.035f)), -h, 0f), androidx.compose.ui.geometry.Offset(0f, -h), androidx.compose.ui.geometry.Size(size.width, h)) }
         .background(MaterialTheme.colorScheme.surface).navigationBarsPadding()) {
@@ -660,12 +665,12 @@ private fun BottomBar(section: Section, onSection: (Section) -> Unit, onAccount:
         Row(Modifier.fillMaxWidth().height(64.dp)) {
             // The selected item swaps to its solid blue icon.
             listOf(Triple(Section.HOME, NavIcons.home, NavIcons.homeSelected), Triple(Section.WATCHLIST, NavIcons.star, NavIcons.starSelected),
-                Triple(Section.PORTFOLIO, NavIcons.folder, NavIcons.folderSelected), Triple(Section.ORDERS, NavIcons.clipboard, NavIcons.clipboardSelected))
+                Triple(Section.PORTFOLIO, NavIcons.folder, NavIcons.folderSelected), Triple(Section.ORDERS, NavIcons.clipboard, NavIcons.clipboardSelected),
+                Triple(Section.ACCOUNT, NavIcons.wallet, NavIcons.walletSelected))
                 .forEach { (s, icon, solid) -> val sel = section == s
                     // Each icon at the size its ink has in the reference.
-                    BottomItem(s.name, if (sel) solid else icon, sel, "bottom_${s.name}", when (s) { Section.HOME -> 25.dp; Section.PORTFOLIO -> 26.dp; else -> 22.dp }) { onSection(s) }
+                    BottomItem(s.name, if (sel) solid else icon, sel, "bottom_${s.name}", when (s) { Section.HOME -> 25.dp; Section.PORTFOLIO -> 26.dp; Section.ACCOUNT -> 27.dp; else -> 22.dp }) { onSection(s) }
                 }
-            BottomItem("ACCOUNT", NavIcons.wallet, false, "bottom_ACCOUNT", 27.dp, onAccount)
         }
     }
 }
@@ -688,7 +693,7 @@ private fun feedMessage(s: FeedState, m: String?) = when (s) {
 }
 
 class Nav(val index: (Underlying) -> Unit, val stock: (String) -> Unit, val chain: (Underlying) -> Unit, val futures: (Underlying) -> Unit,
-          val contract: (String) -> Unit, val account: () -> Unit, val back: () -> Unit, val fyersLogin: () -> Unit = {}, val upstoxLogin: () -> Unit = {},
+          val contract: (String) -> Unit, val back: () -> Unit, val fyersLogin: () -> Unit = {}, val upstoxLogin: () -> Unit = {},
           val order: (String, Side) -> Unit = { _, _ -> }, val stockChain: (String) -> Unit = {})
 
 /** "Add to watchlist" sheet: one checkbox per watchlist; ticking adds, unticking removes. */

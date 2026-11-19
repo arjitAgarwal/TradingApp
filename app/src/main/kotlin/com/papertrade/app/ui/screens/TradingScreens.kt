@@ -824,9 +824,13 @@ fun MyWealthScreen(vm: AppVM) {
     }
 }
 
+/**
+ * Every account setting, as white cards 8 dp apart for the grey ACCOUNT page (which scrolls them): the virtual wallet, Add
+ * to portfolio, market data, the FYERS and Upstox logins, simulation rules and backup / reset.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AccountScreen(vm: AppVM, nav: Nav) {
+internal fun AccountSettings(vm: AppVM, nav: Nav) {
     val acc by vm.account.collectAsState(); val v by vm.valuation.collectAsState(); val settings by vm.settings.collectAsState(); val ctx: Context = LocalContext.current
     val auth by vm.fyersAuth.collectAsState(); val upstoxAuth by vm.upstoxAuth.collectAsState()
     var confirmReset by remember { mutableStateOf(false) }
@@ -836,8 +840,9 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
         uri?.let { vm.export { text -> ctx.contentResolver.openOutputStream(it)?.use { o -> o.write(text.toByteArray()) } } } }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let { vm.import(ctx.contentResolver.openInputStream(it)?.bufferedReader()?.readText() ?: "") } }
-    Scaffold(topBar = { TopAppBar(title = { Text("Account & settings") }, navigationIcon = { TextButton(nav.back) { Text("←") } }) }) { pad ->
-        Column(Modifier.padding(pad).padding(12.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    @Composable fun Card(modifier: Modifier, content: @Composable () -> Unit) =
+        Box(modifier.clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surface).padding(4.dp)) { content() }
+    Column(Modifier.fillMaxWidth().testTag("account_settings"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
                 Text("Virtual wallet (simulation only)", fontWeight = FontWeight.SemiBold)
                 StatRow("Starting capital", Fmt.rupee(acc?.wallet?.startingCapital)); StatRow("Available cash", Fmt.rupee(v?.availableCash)); StatRow("Reserved margin", Fmt.rupee(v?.reservedMargin))
@@ -912,7 +917,6 @@ fun AccountScreen(vm: AppVM, nav: Nav) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton({ exportLauncher.launch("papertrade-export.json") }) { Text("Export") }; OutlinedButton({ importLauncher.launch(arrayOf("application/json", "text/plain")) }) { Text("Import") } }
                 Button({ confirmReset = true }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Reset simulation to ₹13,54,510") }
             } }
-        }
     }
     if (confirmReset) AlertDialog(onDismissRequest = { confirmReset = false }, title = { Text("Reset simulation?") }, text = { Text("All orders, trades, positions, holdings and added mutual funds will be deleted. Export first if you want a backup.") },
         confirmButton = { TextButton({ vm.reset(); confirmReset = false }) { Text("Reset") } }, dismissButton = { TextButton({ confirmReset = false }) { Text("Cancel") } })
