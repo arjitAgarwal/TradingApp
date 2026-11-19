@@ -99,12 +99,14 @@ fun ChangeBadge(change: java.math.BigDecimal?) {
 private enum class Section { HOME, WATCHLIST, PORTFOLIO, ORDERS }
 
 /**
- * Search bar, the two index cards and a five-item bottom bar (HOME, WATCHLIST, PORTFOLIO, ORDERS, ACCOUNT). The app
- * opens on WATCHLIST; ACCOUNT opens the settings screen.
+ * A header per section (HOME's Products / search / Profile over its category tabs, WATCHLIST's search bar, the tabbed
+ * Orders and Portfolio headers), the two index cards and a five-item bottom bar (HOME, WATCHLIST, PORTFOLIO, ORDERS,
+ * ACCOUNT). The app opens on WATCHLIST; ACCOUNT opens the settings screen.
  */
 @Composable
 fun MainScreen(vm: AppVM, nav: Nav) {
     var section by rememberSaveable { mutableStateOf(Section.WATCHLIST) }; var ordersTab by rememberSaveable { mutableIntStateOf(0) }; var portfolioTab by rememberSaveable { mutableIntStateOf(0) }
+    var homeTab by rememberSaveable { mutableStateOf(HomeTab.STOCKS) }
     // Search takes over the page below the header until closed (back arrow or system back).
     var searching by rememberSaveable { mutableStateOf(false) }; var query by rememberSaveable { mutableStateOf("") }
     androidx.activity.compose.BackHandler(searching) { searching = false; query = "" }
@@ -121,6 +123,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
             if (settings.dataMode == DataMode.DEMO) DemoBanner()
             if (section == Section.ORDERS && !searching) OrdersTabs(ordersTab, { ordersTab = it }, onSearch = { searching = true }, onMenu = nav.account)
             else if (section == Section.PORTFOLIO && !searching) OrdersTabs(portfolioTab, { portfolioTab = it }, onSearch = { searching = true }, onMenu = nav.account, labels = listOf("Holdings", "My Wealth"), onProfile = nav.account)
+            else if (section == Section.HOME && !searching) { HomeHeader(nav, onSearch = { searching = true }); HomeTabs(homeTab) { homeTab = it } }
             else SearchBar(searching, query, { query = it }, onOpen = { searching = true }, onClose = { searching = false; query = "" })
             if (!searching && section != Section.PORTFOLIO) { IndexCards(vm, nav.index); HorizontalDivider() } // Portfolio opens straight on its own header, as in the reference
             if (settings.dataMode == DataMode.LIVE_PROVIDER && auth != LoginState.READY) Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth().clickable { if (auth != LoginState.NEEDS_LOGIN) nav.account() else if (upstox) nav.upstoxLogin() else nav.fyersLogin() }.testTag("fyers_login_banner")) {
@@ -132,7 +135,7 @@ fun MainScreen(vm: AppVM, nav: Nav) {
     }, bottomBar = { BottomBar(section, { section = it; searching = false; query = "" }, nav.account) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             if (searching) SearchResults(vm, nav, query) else when (section) {
-                Section.HOME -> ExploreScreen(vm, nav); Section.WATCHLIST -> WatchlistsPage(vm, nav)
+                Section.HOME -> HomePage(vm, nav, homeTab, onViewAll = { section = Section.WATCHLIST }); Section.WATCHLIST -> WatchlistsPage(vm, nav)
                 Section.PORTFOLIO -> if (portfolioTab == 0) HoldingsScreen(vm, nav) else MyWealthScreen(vm); Section.ORDERS -> if (ordersTab == 0) OrdersScreen(vm) else PositionsScreen(vm, nav)
             }
         }
@@ -688,25 +691,6 @@ class Nav(val index: (Underlying) -> Unit, val stock: (String) -> Unit, val chai
           val contract: (String) -> Unit, val account: () -> Unit, val back: () -> Unit, val fyersLogin: () -> Unit = {}, val upstoxLogin: () -> Unit = {},
           val order: (String, Side) -> Unit = { _, _ -> }, val stockChain: (String) -> Unit = {})
 
-@Composable
-fun ExploreScreen(vm: AppVM, nav: Nav) {
-    val quotes by vm.quotes.collectAsState()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("Market overview", fontWeight = FontWeight.SemiBold) }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Underlying.values().forEach { u -> val q = quotes[u.indexSymbol]
-                    OutlinedCard(Modifier.weight(1f).clickable { nav.index(u) }.testTag("card_${u.name}")) { Column(Modifier.padding(12.dp)) {
-                        Text(u.displayName); Text(Fmt.inr(q?.ltp), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text(Fmt.pct(q?.changePct), color = Fmt.color(q?.changePct, MaterialTheme.colorScheme.onSurface))
-                        Text("Option chain · Futures →", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-                    } } }
-            }
-        }
-        item { Text("Use the search bar at the top to find a stock, then tap ☆ to add it to a watchlist.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    }
-}
-
 /** "Add to watchlist" sheet: one checkbox per watchlist; ticking adds, unticking removes. */
 @Composable
 private fun WatchlistPicker(lists: List<com.papertrade.app.data.repo.Watchlist>, symbol: String, onDismiss: () -> Unit, onToggle: (com.papertrade.app.data.repo.Watchlist, Boolean) -> Unit) {
@@ -740,11 +724,11 @@ fun StockRow(symbol: String, name: String, q: MarketQuote?, f: Freshness, starre
 
 
 /**
- * The fixed first WATCHLIST tab: Call/Put, the index chips (the selected one carries its expiry picker), then that
- * expiry's strikes around the money, each tagged ITM/ATM/OTM. Tap a strike for Buy/Sell.
+ * The fixed first WATCHLIST tab (also HOME's F&O tab): Call/Put, the index chips (the selected one carries its expiry
+ * picker), then that expiry's strikes around the money, each tagged ITM/ATM/OTM. Tap a strike for Buy/Sell.
  */
 @Composable
-private fun OptionsTab(vm: AppVM, nav: Nav) {
+internal fun OptionsTab(vm: AppVM, nav: Nav) {
     var calls by rememberSaveable { mutableStateOf(true) }; var u by rememberSaveable { mutableStateOf(Underlying.NIFTY) }
     var expiry by remember(u) { mutableStateOf<java.time.LocalDate?>(null) } // null: the nearest one
     var chain by remember(u) { mutableStateOf<com.papertrade.app.data.market.OptionChain?>(null) }; var error by remember(u) { mutableStateOf<String?>(null) }
